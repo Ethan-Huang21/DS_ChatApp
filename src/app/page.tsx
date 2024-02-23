@@ -8,22 +8,28 @@ type Message = {
   id: string;
   content: string;
   username: string;
+  time: string;
+}
+
+type User = {
+  id: string;
+  username: string
 }
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>();
-  const [username, setUsername] = useState("");
+  const [user, setUser] = useState<User>();
   const [input, setInput] = useState("");
-  const [currentPB, setPB] = useState<PocketBase>();
 
   const effectRan = useRef(false);
 
   useEffect(() => {
     if (!effectRan.current) {
       const pb = new PocketBase("http://127.0.0.1:8090");
-      setPB(pb);
-      // createUser(pb);
+      pb.admins.authWithPassword("lyne8278@gmail.com", "123123123123")
+      createUser(pb);
       getMessages(pb);
+      subscribeMessages(pb);
     }
     return () => { effectRan.current = true };
   }, []);
@@ -34,35 +40,63 @@ export default function Home() {
       const username = (await pb.collection('users').getOne(result.user)).username;
       result.username = username;
     }
-    setMessages(results.map(r => { return { id: r.id, content: r.content, username: r.username } }));
-    return results;
+    setMessages(results.map(r => { return { id: r.id, content: r.content, username: r.username, time: r.created } }));
   };
+
+  const subscribeMessages = async (pb: PocketBase) => {
+    await pb.collection('messages').subscribe("*", async e => {
+      await getMessages(pb);
+    })
+  }
 
   const createUser = async (pb: PocketBase) => {
     const username = generate() as string;
-    setUsername(username);
     const user = await pb.collection('users').create({ username });
+    setUser({ id: user.id, username: user.username });
+    // setUser({ id: 'w3iacyzlhlickra', username: 'mad' });
   };
 
   const sendMessage = async () => {
-    console.log(input);
+    const pb = new PocketBase("http://127.0.0.1:8090");
+    const result = await pb.collection('messages').create({ content: input, user: user?.id });
+    setInput("");
   }
 
+  const messagesEndRef = useRef<null | HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages])
+
   return (
-    <div className="container">
-      <div className="overflow-auto">
+    <div>
+      <div className="overflow-scroll" style={{ height: "85vh" }}>
         {messages?.map(message =>
           <div
-            className="m-10 p-10 border-solid border-2 border-indigo-600 rounded-lg"
+            className={message.username == user?.username ? "flex justify-end mx-10 my-5" : "flex mx-10 my-5"}
             key={message.id}>
-            <small>{message.username}</small>
-            <p>{message.content}</p>
-
+            <div className="p-3 border-solid border-2 border-indigo-600 rounded-lg bg-indigo-600 text-white">
+              <div className="flex items-center">
+                <div className="font-bold text-lg mr-2">{message.username}
+                </div>
+                <div className="text-sm text-grey">{message.time.slice(10, 16)}</div>
+              </div>
+              <div>{message.content}</div>
+            </div>
           </div>)}
+        <div ref={messagesEndRef}></div>
       </div>
       <div className="flex m-10 absolute inset-x-0 bottom-0">
         <input
           onChange={e => setInput(e.currentTarget.value)}
+          onKeyDown={e => {
+            e.key == "Enter" && sendMessage();
+          }}
+          value={input}
           type="text"
           className="w-full rounded-lg border-0 py-1.5 pl-5 pr-20 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
         />
@@ -71,7 +105,6 @@ export default function Home() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
           </svg>
         </button>
-
       </div>
     </div>
   );

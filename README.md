@@ -1,5 +1,20 @@
 This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
+## Setting up PocketBase
+
+Setting up an admin account:
+```
+./pocketbase admin create "junyi.li@ucalgary.ca" "123123123123"
+```
+
+Run PocketBase:
+```
+./pocketbase serve
+```
+
+Import collections:
+Go to the PocketBase Admin Portal - Settings - Import Collections - Load from JSON file - choose `pb_schema.json` file in the repo
+
 ## Getting Started
 
 First, run the development server:

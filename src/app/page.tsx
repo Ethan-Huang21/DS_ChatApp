@@ -26,7 +26,7 @@ export default function Home() {
   useEffect(() => {
     if (!effectRan.current) {
       const pb = new PocketBase("http://127.0.0.1:8090");
-      pb.admins.authWithPassword("lyne8278@gmail.com", "123123123123")
+      pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123")
       createUser(pb);
       getMessages(pb);
       subscribeMessages(pb);

@@ -20,6 +20,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>();
   const [user, setUser] = useState<User>();
   const [input, setInput] = useState("");
+  const [open, setOpen] = useState(false);
 
   const effectRan = useRef(false);
 
@@ -75,8 +76,17 @@ export default function Home() {
   return (
     <div className="flex h-screen">
       {/* Sidebar */}
-      <div className="bg-gray-800 text-white p-8">
-        <p>A</p>
+      <div className="bg-gray-800 text-white p-4" style={{ width: "100px" }}>
+        <button className='menu-trigger relative overflow-hidden focus:outline-none' onClick={()=>{setOpen(!open)}}>
+          <div className="w-16 h-16 rounded-full overflow-hidden">
+            <img
+              src="/phimg1.png"
+              alt="Profile"
+              className="w-full h-full object-cover"
+            />
+          </div>
+        </button>
+        {open ? <div>Is Open</div> : <div>Is Closed</div>}
       </div>
 
       {/* Primary Flex Container for Input + Response */}

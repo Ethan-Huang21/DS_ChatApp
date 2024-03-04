@@ -21,9 +21,10 @@ export default function Home() {
   const [user, setUser] = useState<User>();
   const [input, setInput] = useState("");
   const [open, setOpen] = useState(false);
+  const ddmenuRef = useRef<HTMLDivElement>(null);
 
   const effectRan = useRef(false);
-
+  // Initialization
   useEffect(() => {
     if (!effectRan.current) {
       const pb = new PocketBase("http://127.0.0.1:8090");
@@ -34,6 +35,21 @@ export default function Home() {
     }
     return () => { effectRan.current = true };
   }, []);
+
+  // Event Hook to close DD-Menu Clicking anywhere else.
+  useEffect(() => {
+    const handler = (e: MouseEvent)=>{
+      if (ddmenuRef.current && !ddmenuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handler);
+
+    return() => {
+      document.removeEventListener("mousedown", handler);
+    }
+  });
 
   const getMessages = async (pb: PocketBase) => {
     const results = await pb.collection('messages').getFullList();
@@ -91,20 +107,22 @@ export default function Home() {
             </div>
           </button>
           {/* Dropdown Menu */}
-          <div className={`absolute top-10 left-5 mt-10 bg-white border rounded-md shadow-lg text-black transition-opacity duration-350 
-            ${open ? 'opacity-100' : 'opacity-0 invisible'}`}
-            style={{width: '150px', padding: '10px 20px', pointerEvents: open ? 'auto' : 'none'}}>
-            <div className='text-lg mb-1'>{user?.username}</div>
-            <hr className="my-1" style={{color: "gray", background: "gray", height: "2px", width: "75px" }}/>
-            <div className="ml-1 my-1">
-              {/* Dropdown Items --> Can change depending on authentication */}
-              <div className="hover:text-gray-700"> Select1 </div>
-              <div className="hover:text-gray-700"> Select2 </div>
-              <div className="hover:text-gray-700"> Select3 </div>
-              <div className="hover:text-gray-700"> Select4 </div>
-              <div className="hover:text-gray-700"> Select5 </div>
+          {open &&
+            <div className={`absolute top-10 left-5 mt-10 bg-white border rounded-md shadow-lg text-black transition-opacity duration-350`}
+              style={{width: '150px', padding: '10px 20px', pointerEvents: open ? 'auto' : 'none'}}
+              ref={ddmenuRef}>
+              <div className='text-lg mb-1'>{user?.username}</div>
+              <hr className="my-1" style={{color: "gray", background: "gray", height: "2px", width: "75px" }}/>
+              <div className="ml-1 my-1">
+                {/* Dropdown Items --> Can change depending on authentication */}
+                <div className="hover:text-gray-700"> Select1 </div>
+                <div className="hover:text-gray-700"> Select2 </div>
+                <div className="hover:text-gray-700"> Select3 </div>
+                <div className="hover:text-gray-700"> Select4 </div>
+                <div className="hover:text-gray-700"> Select5 </div>
+              </div>
             </div>
-          </div>
+          }
         </div>
         <hr className="my-1" style={{color: "gray", background: "gray", height: "2px", width: "40px" }}/>
         {/* Other Buttons for Servers */ }

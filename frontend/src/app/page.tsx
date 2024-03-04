@@ -77,7 +77,7 @@ export default function Home() {
     <div className="flex h-screen">
       {/* Sidebar */}
       <div className="bg-gray-800 text-white p-4" style={{ width: "80px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-        {/* First Button is for Profile */}
+        {/* First Button is for Profile Dropdown-Menu */}
         <div className='menu-container' style={{display: "flex", flexDirection: "column", alignItems: "center"}}>
           <button className='menu-trigger relative overflow-hidden focus:outline-none focus:ring rounded-full border-blue-500 mb-2'
           style={{width: "56px", height: "56px"}} 
@@ -91,21 +91,20 @@ export default function Home() {
             </div>
           </button>
           {/* Dropdown Menu */}
-          {open && 
-            <div className='absolute top-10 left-5 mt-10 bg-white border rounded-md shadow-lg text-black'
-             style={{width: '150px', padding: '10px 20px'}}>
-              <div className='text-lg mb-1'>{user?.username}</div>
-              <hr className="my-1" style={{color: "gray", background: "gray", height: "2px", width: "75px" }}/>
-              <div className="ml-1 my-1">
-                {/* Dropdown Items --> Can change depending on authentication */}
-                <div className="hover:text-gray-700"> Select1 </div>
-                <div className="hover:text-gray-700"> Select2 </div>
-                <div className="hover:text-gray-700"> Select3 </div>
-                <div className="hover:text-gray-700"> Select4 </div>
-                <div className="hover:text-gray-700"> Select5 </div>
-              </div>
+          <div className={`absolute top-10 left-5 mt-10 bg-white border rounded-md shadow-lg text-black transition-opacity duration-350 
+            ${open ? 'opacity-100' : 'opacity-0 invisible'}`}
+            style={{width: '150px', padding: '10px 20px', pointerEvents: open ? 'auto' : 'none'}}>
+            <div className='text-lg mb-1'>{user?.username}</div>
+            <hr className="my-1" style={{color: "gray", background: "gray", height: "2px", width: "75px" }}/>
+            <div className="ml-1 my-1">
+              {/* Dropdown Items --> Can change depending on authentication */}
+              <div className="hover:text-gray-700"> Select1 </div>
+              <div className="hover:text-gray-700"> Select2 </div>
+              <div className="hover:text-gray-700"> Select3 </div>
+              <div className="hover:text-gray-700"> Select4 </div>
+              <div className="hover:text-gray-700"> Select5 </div>
+            </div>
           </div>
-          }
         </div>
         <hr className="my-1" style={{color: "gray", background: "gray", height: "2px", width: "40px" }}/>
         {/* Other Buttons for Servers */ }
@@ -125,7 +124,7 @@ export default function Home() {
                   </div>
                   <div className="text-sm text-grey">{message.time.slice(10, 16)}</div>
                 </div>
-                <div>{message.content}</div>
+                <div className="break-words" style={{maxWidth: "350px"}}>{message.content}</div>
               </div>
             </div>)}
           <div ref={messagesEndRef}></div>

@@ -2,10 +2,7 @@ import docker
 from time import sleep
 
 NUM_CONTAINERS = 3
-STARTING_PORT = 22222
-
-client = docker.from_env()
-port_map = {}
+STARTING_PORT = 5001
 
 def create_image(dockerfile_path, image_name, tag='latest'):
     """
@@ -38,6 +35,9 @@ def monitor_containers():
 
 if __name__ == "__main__":
     # Example: Start monitoring with an initial container
+    # client = docker.DockerClient(base_url="tcp://35.92.41.30:2375", tls=False)
+    client = docker.from_env()
+    port_map = {}
     create_image("./", "pocketbase", "latest")
     for port in list(range(STARTING_PORT, STARTING_PORT + NUM_CONTAINERS)):
         id = create_container("pocketbase:latest", port)

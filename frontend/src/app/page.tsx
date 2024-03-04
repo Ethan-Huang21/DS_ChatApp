@@ -76,17 +76,39 @@ export default function Home() {
   return (
     <div className="flex h-screen">
       {/* Sidebar */}
-      <div className="bg-gray-800 text-white p-4" style={{ width: "100px" }}>
-        <button className='menu-trigger relative overflow-hidden focus:outline-none' onClick={()=>{setOpen(!open)}}>
-          <div className="w-16 h-16 rounded-full overflow-hidden">
-            <img
-              src="/phimg1.png"
-              alt="Profile"
-              className="w-full h-full object-cover"
-            />
+      <div className="bg-gray-800 text-white p-4" style={{ width: "80px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+        {/* First Button is for Profile */}
+        <div className='menu-container' style={{display: "flex", flexDirection: "column", alignItems: "center"}}>
+          <button className='menu-trigger relative overflow-hidden focus:outline-none focus:ring rounded-full border-blue-500 mb-2'
+          style={{width: "56px", height: "56px"}} 
+          onClick={()=>{setOpen(!open)}}>
+            <div className="w-13 h-13 rounded-full overflow-hidden">
+              <img
+                src="/phimg1.png"
+                alt="Profile"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </button>
+          {/* Dropdown Menu */}
+          {open && 
+            <div className='absolute top-10 left-5 mt-10 bg-white border rounded-md shadow-lg text-black'
+             style={{width: '150px', padding: '10px 20px'}}>
+              <div className='text-lg mb-1'>{user?.username}</div>
+              <hr className="my-1" style={{color: "gray", background: "gray", height: "2px", width: "75px" }}/>
+              <div className="ml-1 my-1">
+                {/* Dropdown Items --> Can change depending on authentication */}
+                <div className="hover:text-gray-700"> Select1 </div>
+                <div className="hover:text-gray-700"> Select2 </div>
+                <div className="hover:text-gray-700"> Select3 </div>
+                <div className="hover:text-gray-700"> Select4 </div>
+                <div className="hover:text-gray-700"> Select5 </div>
+              </div>
           </div>
-        </button>
-        {open ? <div>Is Open</div> : <div>Is Closed</div>}
+          }
+        </div>
+        <hr className="my-1" style={{color: "gray", background: "gray", height: "2px", width: "40px" }}/>
+        {/* Other Buttons for Servers */ }
       </div>
 
       {/* Primary Flex Container for Input + Response */}

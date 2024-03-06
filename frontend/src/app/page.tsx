@@ -130,8 +130,8 @@ export default function Home() {
 
       {/* Primary Flex Container for Input + Response */}
       <div className="flex flex-col w-full bg-gray-100">
-        {/* Overflow Container for Message Fetching */}
-        <div className="flex-grow overflow-scroll bg-blue-100" style={{ height: "85vh", overflowX: "auto" }}>
+        {/* Overflow Container for Message Fetching bg-blue-100*/}
+        <div className="flex-grow overflow-scroll" style={{ height: "85vh", overflowX: "auto" }}>
           {messages?.map(message =>
             <div
               className={message.username == user?.username ? "flex justify-end mx-10 my-5" : "flex mx-10 my-5"}
@@ -148,8 +148,8 @@ export default function Home() {
           <div ref={messagesEndRef}></div>
         </div>
 
-        {/* Flex Container for Message Input */}
-        <div className="flex m-2 p-4 mt-auto bg-red-100">
+        {/* Flex Container for Message Input bg-red-100*/}
+        <div className="flex m-2 p-4 mt-auto">
           <input
             onChange={e => setInput(e.currentTarget.value)}
             onKeyDown={e => {

@@ -17,6 +17,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 	// Uncomment once you have at least one .go migration file in the "pb_migrations directory"
+	// _ "myapp/pb_data/migrations"
 )
 
 func main() {
@@ -30,7 +31,7 @@ func main() {
 	})
 
 	// Idea -- This could be useful, to get the a most recent (auto-logged) migration file to use
-	// in the creation of a new DB.
+	// in the creation of a new DB. Maybe instead of hardcoded -- leader is true, others is false.
 	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
 		// Enable autocreation of Migration Files when making collection changes in the Admin UI
 		// (the isGoRun check is to enable it only during development)

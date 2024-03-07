@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import PocketBase from 'pocketbase';
 import { generate } from "random-words";
+import axios from 'axios'
 
 type Message = {
   id: string;
@@ -24,9 +25,17 @@ export default function Home() {
   const effectRan = useRef(false);
 
   useEffect(() => {
+    axios
+      .get('http://localhost:3010/hello')
+      .then(response => {
+        console.log(response.data)
+      })
+  }, []);
+
+  useEffect(() => {
     if (!effectRan.current) {
       const pb = new PocketBase("http://127.0.0.1:8090");
-      pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123")
+      pb.admins.authWithPassword("parker.graham1@ucalgary.ca", "password")
       createUser(pb);
       getMessages(pb);
       subscribeMessages(pb);

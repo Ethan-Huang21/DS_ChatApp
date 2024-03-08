@@ -22,6 +22,7 @@ import (
 
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"golang.org/x/net/websocket"
@@ -34,8 +35,8 @@ import (
 	// Uncomment once you have at least one .go migration file in the "pb_migrations directory"
 	_ "myapp/pb_data/migrations"
 	// Creating Records
-	// "github.com/pocketbase/pocketbase/forms"
-	// "github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/forms"
+	"github.com/pocketbase/pocketbase/models"
 )
 
 var PK = true
@@ -71,6 +72,38 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 			return
 		}
 		log.Println("Received Message: ", message)
+
+		stArr := strings.Split(message, ":")
+		switch len(stArr) {
+		case 4:
+			// Broadcast is a message ->
+			// messageType : messageID : messageContent : messageUser
+			//mtype := stArr[0]
+			mid := stArr[1]
+			mct := stArr[2]
+			mus := stArr[3]
+
+			collection, err := app.Dao().FindCollectionByNameOrId("messages")
+			if err != nil {
+				log.Println("Error in Collection Finding")
+			}
+
+			record := models.NewRecord(collection)
+			form := forms.NewRecordUpsert(app, record)
+
+			form.LoadData(map[string]any{
+				"id":      mid,
+				"content": mct,
+				"user":    mus,
+			})
+
+			// Validate and Submit
+			if err := form.Submit(); err != nil {
+				log.Println("Error in Submission")
+			}
+		default:
+			log.Println("Error has Occurred")
+		}
 	}
 }
 
@@ -132,26 +165,10 @@ func main() {
 		log.Println(e.UploadedFiles)
 
 		if PK {
-			broadcastMsg("Hello World, Record was Created for messages")
+			log.Println("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user"))
+			broadcastMsg("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user"))
 		}
 
-		// collection, err := app.Dao().FindCollectionByNameOrId("test1")
-		// if err != nil {
-		// 	return err
-		// }
-
-		// record := models.NewRecord(collection)
-		// form := forms.NewRecordUpsert(app, record)
-
-		// form.LoadData(map[string]any{
-		// 	//"id":    "epl578g5ht1o4jt",
-		// 	"field": "Hello",
-		// })
-
-		// // Validate and Submit
-		// if err := form.Submit(); err != nil {
-		// 	return err
-		// }
 		return nil
 	})
 

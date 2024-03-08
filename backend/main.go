@@ -11,7 +11,7 @@ package main
 	go run main.go admin create "junyi.li@ucalgary.ca" "123123123123"
 4. Run (requires auth)
 	go run main.go serve
-5. Tables
+5. Tables [If no pb_data folder]
 	For our app, once you sign in, import collections of frontend/pb_schema.json
 	Automigrate will then create the needed folders in pb_data, and you can uncomment some things.
 */

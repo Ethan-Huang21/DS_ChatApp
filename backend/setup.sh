@@ -5,6 +5,7 @@
 
 cd /pb
 
+# Initialize Dependencies.
 go mod init myapp
 go get github.com/pocketbase/pocketbase
 go mod tidy

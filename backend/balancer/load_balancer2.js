@@ -48,18 +48,10 @@ app.get("/hello", async (request, response) => {
     return response.json('hello');
 });
 
-// Specify the port to listen on
-const PORT = 3010;
-
-// Start the server
-app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
-});
-
 
 const initializePocketBase = async () => {
     const pb = new PocketBase("http://127.0.0.1:8090");
-    await pb.admins.authWithPassword("parker.graham1@outlook.ca", "password");
+    await pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123");
     databases.push(pb);
     console.log(databases);
     // getMessages(pb);
@@ -69,8 +61,23 @@ const initializePocketBase = async () => {
 
 
 const main = async () => {
-    await initializePocketBase();
-    test();
+    try {
+        await initializePocketBase();
+        await test();
+        startServer(); // Start the server only after initialization is complete
+    } catch (error) {
+        console.error('Initialization error:', error);
+    }
+}
+
+const startServer = () => {
+    // Specify the port to listen on
+    const PORT = 3010;
+
+    // Start the server
+    app.listen(PORT, () => {
+        console.log(`Server listening on port ${PORT}`);
+    });
 }
 
 main();

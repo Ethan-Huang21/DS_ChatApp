@@ -1,23 +1,11 @@
 FROM alpine:latest
 
-# ARG PB_VERSION=0.22.2
-
 RUN apk add --no-cache \
     unzip \
     ca-certificates \
     bash \
     curl \
     git
-
-# download and unzip PocketBase
-# ADD https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip /tmp/pb.zip
-# RUN unzip /tmp/pb.zip -d /pb/
-
-# uncomment to copy the local pb_migrations dir into the image
-# COPY ./pb_migrations /pb/pb_migrations
-
-# uncomment to copy the local pb_hooks dir into the image
-# COPY ./pb_hooks /pb/pb_hooks
 
 # Install Go
 RUN mkdir -p /usr/local/go \
@@ -27,15 +15,17 @@ RUN mkdir -p /usr/local/go \
 ENV GOPATH /go
 ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
 
-COPY ./pb_data ./pb/pb_data
+# Copy Local pb_data folder into pb_data in /pb/pb_data in containers
 COPY ./main.go ./pb/
+COPY ./pb_data ./pb/pb_data
 
-# Copy the shell script into the builder stage, make it executable
-COPY ./setup.sh /pb/
+# Copy the shell script into the builder stage, make it executable.
+COPY ./setup.sh ./pb/
+RUN dos2unix /pb/setup.sh
 RUN chmod +x /pb/setup.sh
 
 EXPOSE 8080
 
 # start PocketBase
-# CMD ["/pb/pocketbase", "serve", "--http=0.0.0.0:8080"]
+# CMD ["ls", "-l", "/pb/"]
 CMD ["./pb/setup.sh"]

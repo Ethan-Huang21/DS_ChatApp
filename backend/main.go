@@ -75,6 +75,30 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 
 		stArr := strings.Split(message, ":")
 		switch len(stArr) {
+		case 3:
+			// Broadcast is a user ->
+			// messageType : messageID : messageUsername
+			//mtype := stArr[0]
+			mid := stArr[1]
+			mus := stArr[2]
+
+			collection, err := app.Dao().FindCollectionByNameOrId("users")
+			if err != nil {
+				log.Println("Error in Collection Finding")
+			}
+
+			record := models.NewRecord(collection)
+			form := forms.NewRecordUpsert(app, record)
+
+			form.LoadData(map[string]any{
+				"id":       mid,
+				"username": mus,
+			})
+
+			// Validate and Submit
+			if err := form.Submit(); err != nil {
+				log.Println("Error in Submission")
+			}
 		case 4:
 			// Broadcast is a message ->
 			// messageType : messageID : messageContent : messageUser
@@ -156,8 +180,7 @@ func main() {
 	})
 
 	// Record Creation Test
-	// On Record Creation for only "abcd" -- Add a record "Hello" to "test1"
-	// Note: This requires Collections 'abcd' and 'test1' to function, but it seemingly works.
+	// Note: This requires Collections 'messages' and 'users' to function
 	app.OnRecordAfterCreateRequest("messages").Add(func(e *core.RecordCreateEvent) error {
 		log.Println("Record Create Event for messages")
 		log.Println(e.HttpContext)
@@ -167,6 +190,20 @@ func main() {
 		if PK {
 			log.Println("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user"))
 			broadcastMsg("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user"))
+		}
+
+		return nil
+	})
+
+	app.OnRecordAfterCreateRequest("users").Add(func(e *core.RecordCreateEvent) error {
+		log.Println("Record Create Event for users")
+		log.Println(e.HttpContext)
+		log.Println(e.Record)
+		log.Println(e.UploadedFiles)
+
+		if PK {
+			log.Println("2:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("username"))
+			broadcastMsg("2:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("username"))
 		}
 
 		return nil

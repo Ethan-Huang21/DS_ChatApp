@@ -42,10 +42,15 @@ const getMessages = async (pb) => {
 };
 
 //Define the route
-app.get("/hello", async (request, response) => {
-    const messages = await getMessages(databases[0]);
-    console.log(`Here is the messages: ${messages}`);
-    return response.json('hello');
+app.get('/hello', async (request, response) => {
+    try {
+        const messages = await getMessages(databases[0]);
+        console.log(`Here are the messages:`, messages);
+        response.json({ messages, status: 'success' });
+    } catch (error) {
+        console.error('Error retrieving messages:', error);
+        response.status(500).json({ error: 'Internal Server Error' });
+    }
 });
 
 
@@ -56,14 +61,14 @@ const initializePocketBase = async () => {
     console.log(databases);
     // getMessages(pb);
     // createUser(pb);
-    // subscribeMessages(pb);
+    subscribeMessages(pb);
 }
 
 
 const main = async () => {
     try {
         await initializePocketBase();
-        await test();
+        // await test();
         startServer(); // Start the server only after initialization is complete
     } catch (error) {
         console.error('Initialization error:', error);

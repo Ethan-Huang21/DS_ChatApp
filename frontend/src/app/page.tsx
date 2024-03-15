@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import PocketBase from 'pocketbase';
 import { generate } from "random-words";
-import axios from 'axios'
 
 type Message = {
   id: string;
@@ -24,50 +23,40 @@ export default function Home() {
 
   const effectRan = useRef(false);
 
-  useEffect(() => {
-    axios
-      .get('http://localhost:3010/hello')
-      .then(response => {
-        console.log(response.data)
-      })
-  }, []);
+  let ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     if (!effectRan.current) {
       const pb = new PocketBase("http://127.0.0.1:8090");
-      pb.admins.authWithPassword("parker.graham1@ucalgary.ca", "password")
+      pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123")
       createUser(pb);
-      getMessages(pb);
-      subscribeMessages(pb);
     }
     return () => { effectRan.current = true };
   }, []);
-
-  const getMessages = async (pb: PocketBase) => {
-    const results = await pb.collection('messages').getFullList();
-    for (let result of results) {
-      const username = (await pb.collection('users').getOne(result.user)).username;
-      result.username = username;
-    }
-    setMessages(results.map(r => { return { id: r.id, content: r.content, username: r.username, time: r.created } }));
-  };
-
-  const subscribeMessages = async (pb: PocketBase) => {
-    await pb.collection('messages').subscribe("*", async e => {
-      await getMessages(pb);
-    })
-  }
 
   const createUser = async (pb: PocketBase) => {
     const username = generate() as string;
     const user = await pb.collection('users').create({ username });
     setUser({ id: user.id, username: user.username });
-    // setUser({ id: 'w3iacyzlhlickra', username: 'mad' });
   };
 
-  const sendMessage = async () => {
-    const pb = new PocketBase("http://127.0.0.1:8090");
-    const result = await pb.collection('messages').create({ content: input, user: user?.id });
+  const sendMessage = () => {
+    let message = {
+      user: user?.id,
+      content: input
+    }
+    let messageObject = JSON.stringify(message);
+    console.log(messageObject)
+
+    try {
+      if (ws.current === null) {
+        console.log("Error sending messaage, websocket connection not open.")
+      }
+      else ws.current.send(messageObject);
+    }
+    catch {
+      console.log("Message failed to send.");
+    }
     setInput("");
   }
 
@@ -80,6 +69,36 @@ export default function Home() {
   useEffect(() => {
     scrollToBottom();
   }, [messages])
+
+  // connect to load balancer
+  useEffect(() => {
+    // Create a WebSocket connection when the component mounts
+    ws.current = new WebSocket('ws://localhost:3010');
+
+    // Handle messages from the server
+    ws.current.addEventListener('message', (event) => {
+      const receivedData = event.data;
+
+      try {
+        // Parse the received string into a JavaScript object
+        const messageList = JSON.parse(receivedData);
+        console.log('Received messages:', messageList);
+        setMessages(messageList);
+      } catch (error) {
+        console.error('Error parsing received data:', error);
+      }
+    });
+
+    // Handle disconnection
+    ws.current.addEventListener('close', () => {
+      console.log('Connection closed');
+    });
+
+    return () => {
+      // Close the WebSocket connection when the component unmounts
+      if (ws.current !== null) ws.current.close();
+    };
+  }, []); 
 
   return (
     <div>

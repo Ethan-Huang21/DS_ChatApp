@@ -1,12 +1,19 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http'
 import PocketBase from 'pocketbase'
+import { generate } from "random-words";
+
 
 const server = http.createServer();
 const wss = new WebSocketServer({ server });
 
-let databases = [];
+let pb;
 let clients = new Set();
+const serverList = [
+    "http://127.0.0.1:5001",
+    "http://127.0.0.1:5002",
+    "http://127.0.0.1:5003",
+];
 
 const getMessages = async (pb) => {
     const results = await pb.collection('messages').getFullList();
@@ -17,9 +24,43 @@ const getMessages = async (pb) => {
     return results.map(r => { return { id: r.id, content: r.content, username: r.username, time: r.created } });
 };
 
+const createUser = async (pb) => {
+    const username = generate();
+    const user = await pb.collection('users').create({ username });
+    return user;
+}
+
+const checkMainHealth = async () => {
+    try {
+        await pb.health.check();
+    }
+    catch (e) {
+        console.log("Disconnected. Trying to connect to a new server");
+        for (let server of serverList) {
+            try {
+                const res = await fetch(server + "/api/health");
+                const data = await res.json();
+                console.log("Found a new server! " + server);
+                if (data.code == 200) {
+                    pb = new PocketBase(server);
+                    pb.autoCancellation(false);
+                    await pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123");
+                    break;
+                }
+            }
+            catch (e) {
+                continue;
+            }
+        }
+    }
+
+}
 
 wss.on('connection', async (ws) => {
     console.log('Client connected');
+    await checkMainHealth();
+    const user = await createUser(pb);
+    ws.send(JSON.stringify(user));
 
     clients.add(ws);
 
@@ -31,8 +72,9 @@ wss.on('connection', async (ws) => {
         const user = data.user;
         console.log(`The user ${user}`);
         console.log(`The content ${messageContent}`)
-        const result = await databases[0].collection('messages').create({ content: messageContent, user: user });
 
+        await checkMainHealth();
+        const result = await pb.collection('messages').create({ content: messageContent, user: user });
         //broadcast to clients
         await sendMessagesToClient();
     });
@@ -40,7 +82,7 @@ wss.on('connection', async (ws) => {
 
     const sendMessagesToClient = async () => {
         try {
-            const messages = await getMessages(databases[0]);
+            const messages = await getMessages(pb);
             const messagesString = JSON.stringify(messages);
             clients.forEach((client) => {
                 if (client.readyState === WebSocket.OPEN) {
@@ -62,14 +104,11 @@ wss.on('connection', async (ws) => {
 
 
 const initializePocketBase = async () => {
-    const pb = new PocketBase("http://127.0.0.1:8090");
-    await pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123");
+    pb = new PocketBase("http://127.0.0.1:8090");
     pb.autoCancellation(false);
-    databases.push(pb);
+    await pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123");
     const messages = await getMessages(pb);
     console.log("Messages: ", messages);
-    // createUser(pb);
-    //subscribeMessages(pb);
 }
 
 const main = async () => {

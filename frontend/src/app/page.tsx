@@ -23,6 +23,9 @@ export default function Home() {
 
   const effectRan = useRef(false);
 
+  // addresses of load balancers.
+  const loadBalancerAdresses = ['ws://localhost:3010', 'ws://localhost:3011']
+
   let ws = useRef<WebSocket | null>(null);
 
   const sendMessage = () => {
@@ -55,42 +58,56 @@ export default function Home() {
     scrollToBottom();
   }, [messages])
 
+  const openWebSocket = (serverAddress: string, loadBalancerIndex: number) => {
+    // Create a WebSocket connection when the component mounts
+    ws.current = new WebSocket(serverAddress);
+
+    // Handle messages from the server
+    ws.current.addEventListener('message', (event) => {
+      const receivedData = event.data;
+
+      try {
+        // Parse the received string into a JavaScript object
+        const data = JSON.parse(receivedData);
+        console.log('Received messages:', data);
+
+        // If user 
+        if (data.collectionName && data.collectionName == "users") {
+          const user = {
+            id: data.id,
+            username: data.username
+          };
+          setUser(user);
+        }
+
+        // If message list
+        else {
+          setMessages(data);
+        }
+      } catch (error) {
+        console.error('Error parsing received data:', error);
+      }
+    });
+
+    // Handle disconnection
+    ws.current.addEventListener('close', () => {
+      console.log('Connection closed');
+      // server died so connect to next available load balancer
+      if (loadBalancerAdresses[loadBalancerIndex + 1] !== null) openWebSocket(loadBalancerAdresses[loadBalancerIndex + 1], loadBalancerIndex + 1);
+    });
+
+    return () => {
+      // Close the WebSocket connection when the component unmounts
+      if (ws.current !== null) {
+        ws.current.close();
+        if (loadBalancerAdresses[loadBalancerIndex + 1] !== null) openWebSocket(loadBalancerAdresses[loadBalancerIndex + 1], loadBalancerIndex + 1);
+      }
+    };
+  }
   // connect to load balancer
   useEffect(() => {
     if (!effectRan.current) {
-      // Create a WebSocket connection when the component mounts
-      ws.current = new WebSocket('ws://localhost:3010');
-
-      // Handle messages from the server
-      ws.current.addEventListener('message', (event) => {
-        const receivedData = event.data;
-        try {
-          // Parse the received string into a JavaScript object
-          const data = JSON.parse(receivedData);
-          console.log('Received messages:', data);
-
-          // If user 
-          if (data.collectionName && data.collectionName == "users") {
-            const user = {
-              id: data.id,
-              username: data.username
-            };
-            setUser(user);
-          }
-
-          // If message list
-          else {
-            setMessages(data);
-          }
-        } catch (error) {
-          console.error('Error parsing received data:', error);
-        }
-      });
-
-      // Handle disconnection
-      ws.current.addEventListener('close', () => {
-        console.log('Connection closed');
-      });
+      openWebSocket(loadBalancerAdresses[0], 0);
     }
 
     return () => {

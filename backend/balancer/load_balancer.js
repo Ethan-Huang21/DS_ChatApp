@@ -76,20 +76,38 @@ const main = async () => {
     try {
         await initializePocketBase();
         // await test();
-        startServer(); // Start the server only after initialization is complete
+        // Check if a port argument is provided
+        const portArgIndex = process.argv.indexOf('--port');
+        if (portArgIndex !== -1 && portArgIndex + 1 < process.argv.length) {
+            const port = parseInt(process.argv[portArgIndex + 1]);
+            if (!isNaN(port)) {
+                startServer(port);
+            } else {
+                console.error('Invalid port number specified');
+            }
+        } else {
+            console.error('Please specify a port number using --port <port>');
+        }
     } catch (error) {
         console.error('Initialization error:', error);
     }
 }
 
-const startServer = () => {
-    // Specify the port to listen on
-    const PORT = 3010;
+const startServer = (port) => {
 
     // Start the server
-    server.listen(PORT, () => {
-        console.log('WebSocket server listening on port ', PORT);
-    });
+    // this is probably very bad practice change later
+    try {
+        server.listen(port, () => {
+            console.log('WebSocket server listening on port ', port);
+        });
+    }
+    catch {
+        console.log('OH SHIT')
+        server.listen(port + 1, () => {
+            console.log('WebSocket server listening on port ', port + 1);
+        })
+    }
 }
 
 main();

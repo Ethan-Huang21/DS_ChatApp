@@ -22,7 +22,7 @@ import (
 
 	"fmt"
 	"net/http"
-	"strings"
+	"regexp"
 	"sync"
 
 	"golang.org/x/net/websocket"
@@ -71,42 +71,29 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 			fmt.Println("Error receiving message: ", err)
 			return
 		}
+
+		// Combined Regex Pattern [Message] and [User]
+		// Note -- matches[3] appears due to a bug, but matches[4] is messageContent
+		// [User] --> 1-Type, 2-ID, 5-Name
+		// [Message] --> 1-Type, 2-ID, 4-Content, 5-Name
+		pattern := `^([^:]+):([^:]+):((.*?):)?([^:]+)$`
+
+		regex := regexp.MustCompile(pattern)
+		matches := regex.FindStringSubmatch(message)
+
+		// Testing - Print Contents
+		// if len(matches) > 0 {
+		// 	for i, match := range matches[1:] {
+		// 		fmt.Printf("Group %d: %s\n", i+1, match)
+		// 	}
+		// } else {
+		// 	fmt.Println("Matches is Empty")
+		// }
+
 		log.Println("Received Message: ", message)
 
-		stArr := strings.Split(message, ":")
-		switch len(stArr) {
-		case 3:
-			// Broadcast is a user ->
-			// messageType : messageID : messageUsername
-			//mtype := stArr[0]
-			mid := stArr[1]
-			mus := stArr[2]
-
-			collection, err := app.Dao().FindCollectionByNameOrId("users")
-			if err != nil {
-				log.Println("Error in Collection Finding")
-			}
-
-			record := models.NewRecord(collection)
-			form := forms.NewRecordUpsert(app, record)
-
-			form.LoadData(map[string]any{
-				"id":       mid,
-				"username": mus,
-			})
-
-			// Validate and Submit
-			if err := form.Submit(); err != nil {
-				log.Println("Error in Submission")
-			}
-		case 4:
-			// Broadcast is a message ->
-			// messageType : messageID : messageContent : messageUser
-			//mtype := stArr[0]
-			mid := stArr[1]
-			mct := stArr[2]
-			mus := stArr[3]
-
+		switch matches[1] {
+		case "1":
 			collection, err := app.Dao().FindCollectionByNameOrId("messages")
 			if err != nil {
 				log.Println("Error in Collection Finding")
@@ -116,9 +103,27 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 			form := forms.NewRecordUpsert(app, record)
 
 			form.LoadData(map[string]any{
-				"id":      mid,
-				"content": mct,
-				"user":    mus,
+				"id":      matches[2],
+				"content": matches[4],
+				"user":    matches[5],
+			})
+
+			// Validate and Submit
+			if err := form.Submit(); err != nil {
+				log.Println("Error in Submission")
+			}
+		case "2":
+			collection, err := app.Dao().FindCollectionByNameOrId("users")
+			if err != nil {
+				log.Println("Error in Collection Finding")
+			}
+
+			record := models.NewRecord(collection)
+			form := forms.NewRecordUpsert(app, record)
+
+			form.LoadData(map[string]any{
+				"id":       matches[2],
+				"username": matches[5],
 			})
 
 			// Validate and Submit

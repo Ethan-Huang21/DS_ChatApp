@@ -7,18 +7,43 @@ import { generate } from "random-words";
 const server = http.createServer();
 const wss = new WebSocketServer({ server });
 
+const POCKETBASE_USERNAME_AUTH = "junyi.li@ucalgary.ca";
+const POCKETBASE_PASSWORD_AUTH = "123123123123";
+
 let pb;
 let clients = new Set();
+let replicaPbs = new Set();
 const serverList = [
     "http://127.0.0.1:5001",
     "http://127.0.0.1:5002",
     "http://127.0.0.1:5003",
 ];
 
-const getMessages = async (pb) => {
-    const results = await pb.collection('messages').getFullList();
+const primaryReplica = "http://127.0.0.1:5001";
+
+// gets random replica from set of replicas to read from
+const getRandReplicaFromSet = (set) => {
+    console.log(set.size);
+    let randomIndex = Math.floor(Math.random() * set.size);
+    let currentIndex = 0;
+    console.log(randomIndex);
+
+    for(let item of set.values()) {
+        if (currentIndex === randomIndex) {
+            console.log(randomIndex);
+            console.log(item);
+            return item;
+        }
+        else currentIndex++;
+    }
+}
+
+const getMessages = async () => {
+    // reads from replica not primary
+    const readPb = getRandReplicaFromSet(replicaPbs);
+    const results = await readPb.collection('messages').getFullList();
     for (let result of results) {
-        const username = (await pb.collection('users').getOne(result.user)).username;
+        const username = (await readPb.collection('users').getOne(result.user)).username;
         result.username = username;
     }
     return results.map(r => { return { id: r.id, content: r.content, username: r.username, time: r.created } });
@@ -44,7 +69,7 @@ const checkMainHealth = async () => {
                 if (data.code == 200) {
                     pb = new PocketBase(server);
                     pb.autoCancellation(false);
-                    await pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123");
+                    await pb.admins.authWithPassword(POCKETBASE_USERNAME_AUTH, POCKETBASE_PASSWORD_AUTH);
                     break;
                 }
             }
@@ -82,7 +107,7 @@ wss.on('connection', async (ws) => {
 
     const sendMessagesToClient = async () => {
         try {
-            const messages = await getMessages(pb);
+            const messages = await getMessages();
             const messagesString = JSON.stringify(messages);
             clients.forEach((client) => {
                 if (client.readyState === WebSocket.OPEN) {
@@ -106,8 +131,18 @@ wss.on('connection', async (ws) => {
 const initializePocketBase = async () => {
     pb = new PocketBase("http://127.0.0.1:8090");
     pb.autoCancellation(false);
-    await pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123");
-    const messages = await getMessages(pb);
+    await pb.admins.authWithPassword(POCKETBASE_USERNAME_AUTH, POCKETBASE_PASSWORD_AUTH);
+
+    // initialize pocketbase replicas for reading
+
+    for(let replica of serverList) {
+        const newPb = new PocketBase(replica);
+        newPb.autoCancellation(false);
+        await newPb.admins.authWithPassword(POCKETBASE_USERNAME_AUTH, POCKETBASE_PASSWORD_AUTH);
+        replicaPbs.add(newPb);
+    }
+
+    const messages = await getMessages();
     console.log("Messages: ", messages);
 }
 

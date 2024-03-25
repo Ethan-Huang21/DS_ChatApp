@@ -40,6 +40,7 @@ import (
 	"github.com/pocketbase/pocketbase/models"
 )
 
+var PKM sync.Mutex
 var PK = false
 var connectedServers = make(map[*websocket.Conn]bool)
 
@@ -79,14 +80,17 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 		//			primary will create a server, so replicas can differentiate broadcast vs write
 		//			based off of active websocket connection.
 		if ws == nil && !PK {
+			PKM.Lock()
 			log.Println("Attempting to Connect to localhost:8081")
 			var err error
 			ws, err = websocket.Dial("ws://host.docker.internal:8081/ws", "", "http://localhost/")
 			if err != nil {
 				log.Println("Error connecting to localhost:8081:", err)
+				PKM.Unlock()
 				time.Sleep(3 * time.Second) // Retry after 3 seconds
 				continue
 			}
+			PKM.Unlock()
 			log.Println("Connected to localhost:8081")
 		}
 
@@ -108,21 +112,22 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 
 				// Combined Regex Pattern [Message] and [User]
 				// Note -- matches[3] appears due to a bug, but matches[4] is messageContent
-				// [User] --> 1-Type, 2-ID, 5-Name
-				// [Message] --> 1-Type, 2-ID, 4-Content, 5-Name
-				pattern := `^([^:]+):([^:]+):((.*?):)?([^:]+)$`
+				// [User] --> 1-Type, 2-ID, 5-Name, 6-Created, 7-Updated
+				// [Message] --> 1-Type, 2-ID, 4-Content, 5-Name, 6-Created, 7-Updated
+				// Created and Updated doesn't work - https://github.com/pocketbase/pocketbase/discussions/1186
+				pattern := `^([^:]+):([^:]+):((.*?):)?([^:]+)\|([^|]+)\|([^|]+)$`
 
 				regex := regexp.MustCompile(pattern)
 				matches := regex.FindStringSubmatch(message)
 
 				// Testing - Print Contents
-				// if len(matches) > 0 {
-				// 	for i, match := range matches[1:] {
-				// 		fmt.Printf("Group %d: %s\n", i+1, match)
-				// 	}
-				// } else {
-				// 	fmt.Println("Matches is Empty")
-				// }
+				if len(matches) > 0 {
+					for i, match := range matches[1:] {
+						fmt.Printf("Group %d: %s\n", i+1, match)
+					}
+				} else {
+					fmt.Println("Matches is Empty")
+				}
 
 				log.Println("Received Message: ", message)
 
@@ -140,6 +145,8 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 						"id":      matches[2],
 						"content": matches[4],
 						"user":    matches[5],
+						"created": matches[6],
+						"updated": matches[7],
 					})
 
 					// Validate and Submit
@@ -158,6 +165,8 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 					form.LoadData(map[string]any{
 						"id":       matches[2],
 						"username": matches[5],
+						"created":  matches[6],
+						"updated":  matches[7],
 					})
 
 					// Validate and Submit
@@ -170,6 +179,7 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 			}
 		} else {
 			// Primary -- sleep for 100 seconds
+			log.Println("Sleeping...")
 			time.Sleep(100 * time.Second)
 		}
 	}
@@ -216,8 +226,10 @@ func main() {
 		// Then we must be the primary -- thus, Host a server.
 		// Wait 3s (check-down-time), proceed.
 		if ws == nil && !PK {
+			PKM.Lock()
 			PK = true
 			log.Println("No Active Connection -- We must be the Primary")
+			PKM.Unlock()
 			go func() {
 				err := http.ListenAndServe("0.0.0.0"+port, nil)
 				if err != nil {
@@ -237,10 +249,11 @@ func main() {
 		log.Println(e.HttpContext)
 		log.Println(e.Record)
 		log.Println(e.UploadedFiles)
+		log.Println(e.Record.Created)
 
 		if PK {
-			log.Println("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user"))
-			broadcastMsg("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user"))
+			log.Println("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
+			broadcastMsg("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
 		}
 
 		return nil
@@ -251,10 +264,12 @@ func main() {
 		log.Println(e.HttpContext)
 		log.Println(e.Record)
 		log.Println(e.UploadedFiles)
+		log.Println(e.Record.Created.String())
+		log.Println(e.Record.Updated.String())
 
 		if PK {
-			log.Println("2:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("username"))
-			broadcastMsg("2:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("username"))
+			log.Println("2:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("username") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
+			broadcastMsg("2:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("username") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
 		}
 
 		return nil

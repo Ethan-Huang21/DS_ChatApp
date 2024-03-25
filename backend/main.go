@@ -149,6 +149,9 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 						"updated": matches[7],
 					})
 
+					record.Set("created", matches[6])
+					record.Set("updated", matches[7])
+
 					// Validate and Submit
 					if err := form.Submit(); err != nil {
 						log.Println("Error in Submission")
@@ -168,6 +171,9 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 						"created":  matches[6],
 						"updated":  matches[7],
 					})
+
+					record.Set("created", matches[6])
+					record.Set("updated", matches[7])
 
 					// Validate and Submit
 					if err := form.Submit(); err != nil {

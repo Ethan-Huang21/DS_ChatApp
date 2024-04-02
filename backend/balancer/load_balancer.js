@@ -2,6 +2,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http'
 import PocketBase from 'pocketbase'
 import { generate } from "random-words";
+import axios from 'axios';
+
 
 
 const server = http.createServer();
@@ -99,7 +101,21 @@ wss.on('connection', async (ws) => {
         console.log(`The content ${messageContent}`)
 
         await checkMainHealth();
-        const result = await pb.collection('messages').create({ content: messageContent, user: user });
+        //const result = await pb.collection('messages').create({ content: messageContent, user: user });
+        const postData = {
+            content: messageContent,
+            user: user
+        }
+        axios.post('http://127.0.0.1:8090/hello', postData)
+            .then(response => {
+                // Handle the response
+                console.log('Response:', response.data);
+            })
+            .catch(error => {
+                // Handle errors
+                console.error('Error:', error);
+            });
+        //console.log(result);
         //broadcast to clients
         await sendMessagesToClient();
     });

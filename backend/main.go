@@ -28,6 +28,7 @@ import (
 
 	"golang.org/x/net/websocket"
 
+	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -248,14 +249,82 @@ func main() {
 		return nil
 	})
 
+	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
+		e.Router.POST("/hello", func(c echo.Context) error {
+			data := struct {
+				// must be capatlized for Echo to recognize
+				Content       	string `json:"content"`
+
+				// collection      string `json:"collection"`
+				// content       	string `json:"content"`
+				User       		string `json:"user"`
+				// created			string `json:"created"`
+				// updated			string `json:"updated"`
+
+			}{}
+			
+			if err := c.Bind(&data); err != nil {
+				return apis.NewBadRequestError("Failed to read request data", err)
+			}
+
+			collection, err := app.Dao().FindCollectionByNameOrId("messages")
+			if err != nil {
+				log.Println("Error in Collection Finding")
+			}
+			record := models.NewRecord(collection)
+
+			record.Set("user", data.User)
+			record.Set("content", data.Content)
+
+			// Submit
+			if err := app.Dao().SaveRecord(record); err != nil {
+				return err
+			}
+
+			log.Println(data)
+			return c.String(http.StatusOK, "Record updates successfully")
+		}, apis.ActivityLogger(app))
+	
+		return nil
+	})
+
 	// Record Creation Test
 	// Note: This requires Collections 'messages' and 'users' to function
+
+	app.OnModelAfterCreate("messages").Add(func(e *core.ModelEvent) error {
+		log.Println("Model create event for messages")
+		// log.Println(e.Model.GetId)
+		// log.Println(e.Model.(*models.Record).GetString("content"))
+		// log.Println(e.Model.(*models.Record).GetString("username"))
+		// log.Println(e.Model.(*models.Record).Created.String())
+		// log.Println(e.Model.(*models.Record).Updated.String())
+
+		record := e.Model.(*models.Record)
+		log.Println(record.Id)
+		log.Println(record.GetString("content"))
+		log.Println(record.GetString("user"))
+		log.Println("1:" + record.Id + ":" + record.GetString("content") + ":" + record.GetString("user") + "|" + record.Created.String() + "|" + record.Updated.String())
+		broadcastMsg("1:" + record.Id + ":" + record.OriginalCopy().GetString("content") + ":" + record.OriginalCopy().GetString("user") + "|" + record.Created.String() + "|" + record.Updated.String())
+
+		return nil
+	})
 	app.OnRecordAfterCreateRequest("messages").Add(func(e *core.RecordCreateEvent) error {
+
+		// log.Println("Record Create Event for messages")
+		// log.Println()
+		// log.Println(e.Model.(*models.Record).GetString("username"))
+
+		//broadcastMsg("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
+
+
 		log.Println("Record Create Event for messages")
 		log.Println(e.HttpContext)
 		log.Println(e.Record)
 		log.Println(e.UploadedFiles)
 		log.Println(e.Record.Created)
+		log.Println("This is id" + e.Record.Id)
+		log.Println("This is the content" + e.Record.OriginalCopy().GetString("content"))
+		log.Println("This is user" + e.Record.OriginalCopy().GetString("user"))
 
 		if PK {
 			log.Println("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())

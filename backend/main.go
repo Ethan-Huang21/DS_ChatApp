@@ -223,46 +223,46 @@ func main() {
 		Automigrate: true,
 	})
 
-	app.OnRecordBeforeCreateRequest("messages", "users").Add(func(e *core.RecordCreateEvent) error {
-		log.Println("Record Create Event Before messages | user")
-		log.Println(e.HttpContext)
-		log.Println(e.Record)
-		log.Println(e.UploadedFiles)
+	// app.OnRecordBeforeCreateRequest("messages", "users").Add(func(e *core.RecordCreateEvent) error {
+	// 	log.Println("Record Create Event Before messages | user")
+	// 	log.Println(e.HttpContext)
+	// 	log.Println(e.Record)
+	// 	log.Println(e.UploadedFiles)
 
-		// If websocket isn't open and we're considered a replica, but we got a write request
-		// Then we must be the primary -- thus, Host a server.
-		// Wait 3s (check-down-time), proceed.
-		if ws == nil && !PK {
-			PKM.Lock()
-			PK = true
-			log.Println("No Active Connection -- We must be the Primary")
-			PKM.Unlock()
-			go func() {
-				err := http.ListenAndServe("0.0.0.0"+port, nil)
-				if err != nil {
-					log.Println("Server already running on port 8081")
-				}
-			}()
-			time.Sleep(3 * time.Second)
-		}
+	// 	// If websocket isn't open and we're considered a replica, but we got a write request
+	// 	// Then we must be the primary -- thus, Host a server.
+	// 	// Wait 3s (check-down-time), proceed.
+	// 	if ws == nil && !PK {
+	// 		PKM.Lock()
+	// 		PK = true
+	// 		log.Println("No Active Connection -- We must be the Primary")
+	// 		PKM.Unlock()
+	// 		go func() {
+	// 			err := http.ListenAndServe("0.0.0.0"+port, nil)
+	// 			if err != nil {
+	// 				log.Println("Server already running on port 8081")
+	// 			}
+	// 		}()
+	// 		time.Sleep(3 * time.Second)
+	// 	}
 
-		return nil
-	})
+	// 	return nil
+	// })
 
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		e.Router.POST("/hello", func(c echo.Context) error {
 			data := struct {
 				// must be capatlized for Echo to recognize
-				Content       	string `json:"content"`
+				Content string `json:"content"`
 
 				// collection      string `json:"collection"`
 				// content       	string `json:"content"`
-				User       		string `json:"user"`
+				User string `json:"user"`
 				// created			string `json:"created"`
 				// updated			string `json:"updated"`
 
 			}{}
-			
+
 			if err := c.Bind(&data); err != nil {
 				return apis.NewBadRequestError("Failed to read request data", err)
 			}
@@ -284,7 +284,29 @@ func main() {
 			log.Println(data)
 			return c.String(http.StatusOK, "Record updates successfully")
 		}, apis.ActivityLogger(app))
-	
+
+		return nil
+	})
+
+	app.OnModelBeforeCreate("messages", "users").Add(func(e *core.ModelEvent) error {
+		log.Println("Model Before Create")
+
+		// If websocket isn't open and we're considered a replica, but we got a write request
+		// Then we must be the primary -- thus, Host a server.
+		// Wait 3s (check-down-time), proceed.
+		if ws == nil && !PK {
+			PKM.Lock()
+			PK = true
+			log.Println("No Active Connection -- We must be the Primary")
+			PKM.Unlock()
+			go func() {
+				err := http.ListenAndServe("0.0.0.0"+port, nil)
+				if err != nil {
+					log.Println("Server already running on port 8081")
+				}
+			}()
+			time.Sleep(3 * time.Second)
+		}
 		return nil
 	})
 
@@ -303,52 +325,70 @@ func main() {
 		log.Println(record.Id)
 		log.Println(record.GetString("content"))
 		log.Println(record.GetString("user"))
-		log.Println("1:" + record.Id + ":" + record.GetString("content") + ":" + record.GetString("user") + "|" + record.Created.String() + "|" + record.Updated.String())
-		broadcastMsg("1:" + record.Id + ":" + record.OriginalCopy().GetString("content") + ":" + record.OriginalCopy().GetString("user") + "|" + record.Created.String() + "|" + record.Updated.String())
-
-		return nil
-	})
-	app.OnRecordAfterCreateRequest("messages").Add(func(e *core.RecordCreateEvent) error {
-
-		// log.Println("Record Create Event for messages")
-		// log.Println()
-		// log.Println(e.Model.(*models.Record).GetString("username"))
-
-		//broadcastMsg("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
-
-
-		log.Println("Record Create Event for messages")
-		log.Println(e.HttpContext)
-		log.Println(e.Record)
-		log.Println(e.UploadedFiles)
-		log.Println(e.Record.Created)
-		log.Println("This is id" + e.Record.Id)
-		log.Println("This is the content" + e.Record.OriginalCopy().GetString("content"))
-		log.Println("This is user" + e.Record.OriginalCopy().GetString("user"))
 
 		if PK {
-			log.Println("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
-			broadcastMsg("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
+			log.Println("1:" + record.Id + ":" + record.GetString("content") + ":" + record.GetString("user") + "|" + record.Created.String() + "|" + record.Updated.String())
+			broadcastMsg("1:" + record.Id + ":" + record.GetString("content") + ":" + record.GetString("user") + "|" + record.Created.String() + "|" + record.Updated.String())
 		}
 
 		return nil
 	})
 
-	app.OnRecordAfterCreateRequest("users").Add(func(e *core.RecordCreateEvent) error {
-		log.Println("Record Create Event for users")
-		log.Println(e.HttpContext)
-		log.Println(e.Record)
-		log.Println(e.UploadedFiles)
-		log.Println(e.Record.Created.String())
-		log.Println(e.Record.Updated.String())
+	app.OnModelAfterCreate("users").Add(func(e *core.ModelEvent) error {
+		log.Println("Model create event for messages")
+		record := e.Model.(*models.Record)
+		log.Println(record.Id)
+		log.Println(record.GetString("username"))
+		log.Println(record.Id)
 
 		if PK {
-			log.Println("2:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("username") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
-			broadcastMsg("2:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("username") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
+			log.Println("2:" + record.Id + ":" + record.GetString("username") + "|" + record.Created.String() + "|" + record.Updated.String())
+			broadcastMsg("2:" + record.Id + ":" + record.GetString("username") + "|" + record.Created.String() + "|" + record.Updated.String())
 		}
 
 		return nil
 	})
+
+	// app.OnRecordAfterCreateRequest("messages").Add(func(e *core.RecordCreateEvent) error {
+
+	// 	// log.Println("Record Create Event for messages")
+	// 	// log.Println()
+	// 	// log.Println(e.Model.(*models.Record).GetString("username"))
+
+	// 	//broadcastMsg("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
+
+	// 	log.Println("Record Create Event for messages")
+	// 	log.Println(e.HttpContext)
+	// 	log.Println(e.Record)
+	// 	log.Println(e.UploadedFiles)
+	// 	log.Println(e.Record.Created)
+	// 	log.Println("This is id" + e.Record.Id)
+	// 	log.Println("This is the content" + e.Record.OriginalCopy().GetString("content"))
+	// 	log.Println("This is user" + e.Record.OriginalCopy().GetString("user"))
+
+	// 	if PK {
+	// 		log.Println("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
+	// 		broadcastMsg("1:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("content") + ":" + e.Record.OriginalCopy().GetString("user") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
+	// 	}
+
+	// 	return nil
+	// })
+
+	// app.OnRecordAfterCreateRequest("users").Add(func(e *core.RecordCreateEvent) error {
+	// 	log.Println("Record Create Event for users")
+	// 	log.Println(e.HttpContext)
+	// 	log.Println(e.Record)
+	// 	log.Println(e.UploadedFiles)
+	// 	log.Println(e.Record.Created.String())
+	// 	log.Println(e.Record.Updated.String())
+
+	// 	if PK {
+	// 		log.Println("2:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("username") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
+	// 		broadcastMsg("2:" + e.Record.Id + ":" + e.Record.OriginalCopy().GetString("username") + "|" + e.Record.Created.String() + "|" + e.Record.Updated.String())
+	// 	}
+
+	// 	return nil
+	// })
 
 	// Log Errors that occur on execution (serve)
 	if err := app.Start(); err != nil {

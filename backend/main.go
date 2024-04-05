@@ -54,12 +54,63 @@ func handleWebSocket(ws *websocket.Conn) {
 	select {}
 }
 
-// Sends a message to all connected servers
+// Function to Remove and Close a Websocket Connection
+func removeConn(ws *websocket.Conn) {
+	// Delete it from the map, and then close it
+	delete(connectedServers, ws)
+	ws.Close()
+}
+
+// Function to return an ACK
+func sendACK(ws *websocket.Conn) {
+	// Send ACK
+	if err := websocket.Message.Send(ws, "ACK"); err != nil {
+		log.Println("Error Sending ACK: ", err)
+	}
+}
+
+// Sends a message to all connected servers, await ACK response
 func broadcastMsg(message string) {
 	for pb := range connectedServers {
+		// Broadcast message
 		if err := websocket.Message.Send(pb, message); err != nil {
 			log.Println("Error Sending Message: ", err)
-			delete(connectedServers, pb)
+			removeConn(pb)
+			continue
+		}
+
+		// Create a timer and ensure it gets cleaned up after function exits
+		timeout := time.NewTimer(500 * time.Millisecond)
+		defer timeout.Stop()
+
+		// Create a signal channel to communicate with Routines
+		fin := make(chan struct{})
+
+		// Create a routine that waits for either a Timeout or ACK.
+		go func(pb *websocket.Conn, fin chan struct{}) {
+			// Once this routine exits, clean up the channel
+			// Meaning it signals that the ACK was received, or an error occurred.
+			defer close(fin)
+			// Wait for Response before continuing
+			var ACK string
+			if err := websocket.Message.Receive(pb, &ACK); err != nil {
+				// If an error was received, then sleep for 0.55s, ensuring timeout
+				log.Println("Error: Receiving ACK: ", err)
+				time.Sleep(550 * time.Millisecond)
+				return
+			}
+			log.Println("ACK Received: ", ACK)
+		}(pb, fin)
+
+		// Wait for multiple channel operations simultaneously
+		// Executes Default -- unless another case is prepared.
+		select {
+		// Timeout -- If it reaches 2s, no ACK is received.
+		case <-timeout.C:
+			log.Println("Error: ACK Timeout")
+			removeConn(pb)
+		case <-fin:
+			// Nothing
 		}
 	}
 }
@@ -115,7 +166,6 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 				// Note -- matches[3] appears due to a bug, but matches[4] is messageContent
 				// [User] --> 1-Type, 2-ID, 5-Name, 6-Created, 7-Updated
 				// [Message] --> 1-Type, 2-ID, 4-Content, 5-Name, 6-Created, 7-Updated
-				// Created and Updated doesn't work - https://github.com/pocketbase/pocketbase/discussions/1186
 				pattern := `^([^:]+):([^:]+):((.*?):)?([^:]+)\|([^|]+)\|([^|]+)$`
 
 				regex := regexp.MustCompile(pattern)
@@ -156,7 +206,11 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 					// Validate and Submit
 					if err := form.Submit(); err != nil {
 						log.Println("Error in Submission")
+					} else {
+						// Send ACK if submission was validated.
+						sendACK(ws)
 					}
+
 				case "2":
 					collection, err := app.Dao().FindCollectionByNameOrId("users")
 					if err != nil {
@@ -179,6 +233,9 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 					// Validate and Submit
 					if err := form.Submit(); err != nil {
 						log.Println("Error in Submission")
+					} else {
+						// Send ACK if submission was validated.
+						sendACK(ws)
 					}
 				default:
 					log.Println("Error has Occurred")
@@ -222,32 +279,6 @@ func main() {
 		Dir:         "./pb_data/migrations",
 		Automigrate: true,
 	})
-
-	// app.OnRecordBeforeCreateRequest("messages", "users").Add(func(e *core.RecordCreateEvent) error {
-	// 	log.Println("Record Create Event Before messages | user")
-	// 	log.Println(e.HttpContext)
-	// 	log.Println(e.Record)
-	// 	log.Println(e.UploadedFiles)
-
-	// 	// If websocket isn't open and we're considered a replica, but we got a write request
-	// 	// Then we must be the primary -- thus, Host a server.
-	// 	// Wait 3s (check-down-time), proceed.
-	// 	if ws == nil && !PK {
-	// 		PKM.Lock()
-	// 		PK = true
-	// 		log.Println("No Active Connection -- We must be the Primary")
-	// 		PKM.Unlock()
-	// 		go func() {
-	// 			err := http.ListenAndServe("0.0.0.0"+port, nil)
-	// 			if err != nil {
-	// 				log.Println("Server already running on port 8081")
-	// 			}
-	// 		}()
-	// 		time.Sleep(3 * time.Second)
-	// 	}
-
-	// 	return nil
-	// })
 
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		e.Router.POST("/hello", func(c echo.Context) error {
@@ -348,6 +379,33 @@ func main() {
 
 		return nil
 	})
+
+	/* Test Code -- This code is the equivalent of the above, barring HTTP handling */
+	// app.OnRecordBeforeCreateRequest("messages", "users").Add(func(e *core.RecordCreateEvent) error {
+	// 	log.Println("Record Create Event Before messages | user")
+	// 	log.Println(e.HttpContext)
+	// 	log.Println(e.Record)
+	// 	log.Println(e.UploadedFiles)
+
+	// 	// If websocket isn't open and we're considered a replica, but we got a write request
+	// 	// Then we must be the primary -- thus, Host a server.
+	// 	// Wait 3s (check-down-time), proceed.
+	// 	if ws == nil && !PK {
+	// 		PKM.Lock()
+	// 		PK = true
+	// 		log.Println("No Active Connection -- We must be the Primary")
+	// 		PKM.Unlock()
+	// 		go func() {
+	// 			err := http.ListenAndServe("0.0.0.0"+port, nil)
+	// 			if err != nil {
+	// 				log.Println("Server already running on port 8081")
+	// 			}
+	// 		}()
+	// 		time.Sleep(3 * time.Second)
+	// 	}
+
+	// 	return nil
+	// })
 
 	// app.OnRecordAfterCreateRequest("messages").Add(func(e *core.RecordCreateEvent) error {
 

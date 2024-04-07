@@ -42,7 +42,9 @@ import (
 )
 
 var PKM sync.Mutex
+var ICM sync.Mutex
 var PK = false
+var isConnected = false
 var connectedServers = make(map[*websocket.Conn]bool)
 
 // handle Connections
@@ -56,7 +58,7 @@ func handleWebSocket(ws *websocket.Conn) {
 
 // Function to Remove and Close a Websocket Connection
 func removeConn(ws *websocket.Conn) {
-	// Delete it from the map, and then close it
+	// Delete it from the map
 	delete(connectedServers, ws)
 	ws.Close()
 }
@@ -131,31 +133,42 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 		//		-- Operates under the assumption that LB only sends writes to primary.
 		//			primary will create a server, so replicas can differentiate broadcast vs write
 		//			based off of active websocket connection.
-		if ws == nil && !PK {
-			PKM.Lock()
+		PKM.Lock()
+		ICM.Lock()
+		if !isConnected && !PK {
 			log.Println("Attempting to Connect to localhost:8081")
 			var err error
 			ws, err = websocket.Dial("ws://host.docker.internal:8081/ws", "", "http://localhost/")
 			if err != nil {
 				log.Println("Error connecting to localhost:8081:", err)
 				PKM.Unlock()
-				time.Sleep(3 * time.Second) // Retry after 3 seconds
+				ICM.Unlock()
+				time.Sleep(2 * time.Second) // Retry after 3 seconds
 				continue
 			}
+			isConnected = true
 			PKM.Unlock()
+			ICM.Unlock()
 			log.Println("Connected to localhost:8081")
+		} else {
+			PKM.Unlock()
+			ICM.Unlock()
 		}
 
-		if ws != nil {
+		ICM.Lock()
+		if isConnected {
+			ICM.Unlock()
 			for {
 				var message string
 				err := websocket.Message.Receive(ws, &message)
 				if err != nil {
 					// Websocket Closure
 					if err.Error() == "EOF" {
+						ICM.Lock()
 						log.Println("Connection Closed. Reconnecting...")
+						isConnected = false
 						ws.Close()
-						ws = nil
+						ICM.Unlock()
 						break
 					}
 					fmt.Println("Error receiving message: ", err)
@@ -204,8 +217,9 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 					record.Set("updated", matches[7])
 
 					// Validate and Submit
+					log.Println("Form Message Submit")
 					if err := form.Submit(); err != nil {
-						log.Println("Error in Submission")
+						log.Println("Error in Submission: ", err)
 					} else {
 						// Send ACK if submission was validated.
 						sendACK(ws)
@@ -231,6 +245,7 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 					record.Set("updated", matches[7])
 
 					// Validate and Submit
+					log.Println("Form User Submit")
 					if err := form.Submit(); err != nil {
 						log.Println("Error in Submission")
 					} else {
@@ -325,8 +340,10 @@ func main() {
 		// If websocket isn't open and we're considered a replica, but we got a write request
 		// Then we must be the primary -- thus, Host a server.
 		// Wait 3s (check-down-time), proceed.
-		if ws == nil && !PK {
-			PKM.Lock()
+		PKM.Lock()
+		ICM.Lock()
+		if !isConnected && !PK {
+			ICM.Unlock()
 			PK = true
 			log.Println("No Active Connection -- We must be the Primary")
 			PKM.Unlock()
@@ -337,7 +354,11 @@ func main() {
 				}
 			}()
 			time.Sleep(3 * time.Second)
+		} else {
+			PKM.Unlock()
+			ICM.Unlock()
 		}
+
 		return nil
 	})
 
@@ -366,7 +387,7 @@ func main() {
 	})
 
 	app.OnModelAfterCreate("users").Add(func(e *core.ModelEvent) error {
-		log.Println("Model create event for messages")
+		log.Println("Model create event for users")
 		record := e.Model.(*models.Record)
 		log.Println(record.Id)
 		log.Println(record.GetString("username"))

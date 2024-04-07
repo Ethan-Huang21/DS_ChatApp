@@ -42,7 +42,6 @@ import (
 )
 
 var PKM sync.Mutex
-var ICM sync.Mutex
 var PK = false
 var isConnected = false
 var connectedServers = make(map[*websocket.Conn]bool)
@@ -134,7 +133,6 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 		//			primary will create a server, so replicas can differentiate broadcast vs write
 		//			based off of active websocket connection.
 		PKM.Lock()
-		ICM.Lock()
 		if !isConnected && !PK {
 			log.Println("Attempting to Connect to localhost:8081")
 			var err error
@@ -142,33 +140,26 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 			if err != nil {
 				log.Println("Error connecting to localhost:8081:", err)
 				PKM.Unlock()
-				ICM.Unlock()
 				time.Sleep(2 * time.Second) // Retry after 3 seconds
 				continue
 			}
 			isConnected = true
 			PKM.Unlock()
-			ICM.Unlock()
 			log.Println("Connected to localhost:8081")
 		} else {
 			PKM.Unlock()
-			ICM.Unlock()
 		}
 
-		ICM.Lock()
 		if isConnected {
-			ICM.Unlock()
 			for {
 				var message string
 				err := websocket.Message.Receive(ws, &message)
 				if err != nil {
 					// Websocket Closure
 					if err.Error() == "EOF" {
-						ICM.Lock()
 						log.Println("Connection Closed. Reconnecting...")
 						isConnected = false
 						ws.Close()
-						ICM.Unlock()
 						break
 					}
 					fmt.Println("Error receiving message: ", err)
@@ -341,9 +332,7 @@ func main() {
 		// Then we must be the primary -- thus, Host a server.
 		// Wait 3s (check-down-time), proceed.
 		PKM.Lock()
-		ICM.Lock()
 		if !isConnected && !PK {
-			ICM.Unlock()
 			PK = true
 			log.Println("No Active Connection -- We must be the Primary")
 			PKM.Unlock()
@@ -356,7 +345,6 @@ func main() {
 			time.Sleep(3 * time.Second)
 		} else {
 			PKM.Unlock()
-			ICM.Unlock()
 		}
 
 		return nil

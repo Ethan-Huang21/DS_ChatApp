@@ -287,7 +287,8 @@ func main() {
 	})
 
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		e.Router.POST("/hello", func(c echo.Context) error {
+		// route for load balancer to send database update
+		e.Router.POST("/update", func(c echo.Context) error {
 			data := struct {
 				// must be capatlized for Echo to recognize
 				Content string `json:"content"`
@@ -318,8 +319,9 @@ func main() {
 				return err
 			}
 
+			// if successful update send ack as response
 			log.Println(data)
-			return c.String(http.StatusOK, "Record updates successfully")
+			return c.String(http.StatusOK, "ACK")
 		}, apis.ActivityLogger(app))
 
 		return nil

@@ -30,7 +30,7 @@ const getRandReplicaFromSet = (set) => {
     let currentIndex = 0;
     console.log(randomIndex);
 
-    for(let item of set.values()) {
+    for (let item of set.values()) {
         if (currentIndex === randomIndex) {
             console.log(randomIndex);
             console.log(item);
@@ -83,6 +83,49 @@ const checkMainHealth = async () => {
 
 }
 
+const sendMessagesToClient = async () => {
+    try {
+        const messages = await getMessages();
+        const messagesString = JSON.stringify(messages);
+        clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(messagesString);
+            }
+        });
+    } catch (error) {
+        console.error('Error sending messages to client:', error);
+    }
+}
+
+// construct message and send http post request to update the database
+const sendDatabaseUpdate = async (messageContent, user) => {
+    try {
+        const postData = {
+            content: messageContent,
+            user: user
+        }
+        const response = await axios.post('http://127.0.0.1:8090/update', postData)
+
+        // only update client if ack is recieved
+        if (response.data === 'ACK') {
+            console.log("Ack recieved message sent successfully");
+            await sendMessagesToClient();
+            return
+        }
+        else {
+            throw new Error('Invalid response recieved');
+        }
+
+    }
+    catch (error) {
+        // Handle errors
+        console.error('Error:', error.message);
+        // Retry sending after a delay (maybe after a certain amount of retries)
+        await new Promise(resolve => setTimeout(resolve, 1)); // Wait for 1 seconds
+        await sendDatabaseUpdate(); // Retry sending the request
+    }
+}
+
 wss.on('connection', async (ws) => {
     console.log('Client connected');
     await checkMainHealth();
@@ -102,38 +145,13 @@ wss.on('connection', async (ws) => {
 
         await checkMainHealth();
         //const result = await pb.collection('messages').create({ content: messageContent, user: user });
-        const postData = {
-            content: messageContent,
-            user: user
-        }
-        axios.post('http://127.0.0.1:8090/hello', postData)
-            .then(response => {
-                // Handle the response
-                console.log('Response:', response.data);
-            })
-            .catch(error => {
-                // Handle errors
-                console.error('Error:', error);
-            });
+
+        await sendDatabaseUpdate(messageContent, user);
         //console.log(result);
         //broadcast to clients
-        await sendMessagesToClient();
+        //await sendMessagesToClient();
     });
 
-
-    const sendMessagesToClient = async () => {
-        try {
-            const messages = await getMessages();
-            const messagesString = JSON.stringify(messages);
-            clients.forEach((client) => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(messagesString);
-                }
-            });
-        } catch (error) {
-            console.error('Error sending messages to client:', error);
-        }
-    };
     await sendMessagesToClient();
 
     // Handle disconnection
@@ -151,7 +169,7 @@ const initializePocketBase = async () => {
 
     // initialize pocketbase replicas for reading
 
-    for(let replica of serverList) {
+    for (let replica of serverList) {
         const newPb = new PocketBase(replica);
         newPb.autoCancellation(false);
         await newPb.admins.authWithPassword(POCKETBASE_USERNAME_AUTH, POCKETBASE_PASSWORD_AUTH);

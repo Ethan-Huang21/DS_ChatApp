@@ -46,6 +46,11 @@ var PK = false
 var isConnected = false
 var connectedServers = make(map[*websocket.Conn]bool)
 
+// Needs to know the IP's of all the other Replicas (and itself)
+var serverList = []string {
+	"host.docker.internal"
+}
+
 // handle Connections
 func handleWebSocket(ws *websocket.Conn) {
 	connectedServers[ws] = true
@@ -134,18 +139,30 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 		//			based off of active websocket connection.
 		PKM.Lock()
 		if !isConnected && !PK {
-			log.Println("Attempting to Connect to localhost:8081")
-			var err error
-			ws, err = websocket.Dial("ws://host.docker.internal:8081/ws", "", "http://localhost/")
-			if err != nil {
-				log.Println("Error connecting to localhost:8081:", err)
-				PKM.Unlock()
-				time.Sleep(2 * time.Second) // Retry after 3 seconds
+			// Iterate through the serverList, attempting to connect
+			for ip := range serverList {
+				log.Println("Attempting to Connect to p:8081 at:", ip)
+				var err error
+				psAddr := "ws://" + ip + ":8081/ws"
+				origin := "http://" + ip + "/"
+
+				// Note: to make this work with Docker, replace origin w/
+				// "http://localhost/"
+				ws, err = websocket.Dial(psAddr, "", origin)
+				if err != nil {
+					log.Println("Error connecting to", ip, ":8081:", err)
+					continue
+				}
+				isConnected = true
+				log.Println("Connected to: ", ip, ":8081")
+				break
+			}
+			PKM.Unlock()
+			// If we didn't get a connection, loop again
+			if (!isConnected) {
+				time.Sleep(2 * time.Second) // Retry after 2 seconds
 				continue
 			}
-			isConnected = true
-			PKM.Unlock()
-			log.Println("Connected to localhost:8081")
 		} else {
 			PKM.Unlock()
 		}

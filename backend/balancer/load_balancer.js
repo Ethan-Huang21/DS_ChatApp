@@ -14,35 +14,38 @@ const POCKETBASE_PASSWORD_AUTH = "123123123123";
 
 let pb;
 let clients = new Set();
-let replicaPbs = new Set();
+let replicaPbs = [];
 const serverList = [
-    "http://127.0.0.1:5001",
-    "http://127.0.0.1:5002",
-    "http://127.0.0.1:5003",
+    "http://10.13.90.99:8090",
+    "http://10.13.163.18:8090"
 ];
 
-const primaryReplica = "http://127.0.0.1:5001";
+let primaryReplica = "http://10.13.189.200:8090";
 
 // gets random replica from set of replicas to read from
-const getRandReplicaFromSet = (set) => {
-    console.log(set.size);
-    let randomIndex = Math.floor(Math.random() * set.size);
-    let currentIndex = 0;
+const getRandReplicaFromSet = async () => {
+    let randomIndex = Math.floor(Math.random() * replicaPbs.length);
     console.log(randomIndex);
 
-    for (let item of set.values()) {
-        if (currentIndex === randomIndex) {
-            console.log(randomIndex);
-            console.log(item);
-            return item;
+    while (true) {
+        if (replicaPbs.length == 0)
+            return pb;
+        try {
+            await replicaPbs[randomIndex].health.check();
+            return replicaPbs[randomIndex];
         }
-        else currentIndex++;
+        catch (e) {
+            console.log(e);
+            replicaPbs.splice(randomIndex, 1);
+            randomIndex = Math.floor(Math.random() * replicaPbs.length);
+        }
     }
 }
 
 const getMessages = async () => {
     // reads from replica not primary
-    const readPb = getRandReplicaFromSet(replicaPbs);
+    const readPb = await getRandReplicaFromSet();
+
     const results = await readPb.collection('messages').getFullList();
     for (let result of results) {
         const username = (await readPb.collection('users').getOne(result.user)).username;
@@ -67,6 +70,8 @@ const checkMainHealth = async () => {
             try {
                 const res = await fetch(server + "/api/health");
                 const data = await res.json();
+                primaryReplica = server;
+                replicaPbs.splice(replicaPbs.indexOf(server), 1)
                 console.log("Found a new server! " + server);
                 if (data.code == 200) {
                     pb = new PocketBase(server);
@@ -104,7 +109,7 @@ const sendDatabaseUpdate = async (messageContent, user) => {
             content: messageContent,
             user: user
         }
-        const response = await axios.post('http://127.0.0.1:8090/update', postData)
+        const response = await axios.post(primaryReplica + '/update', postData)
 
         // only update client if ack is recieved
         if (response.data === 'ACK') {
@@ -163,7 +168,7 @@ wss.on('connection', async (ws) => {
 
 
 const initializePocketBase = async () => {
-    pb = new PocketBase("http://127.0.0.1:8090");
+    pb = new PocketBase(primaryReplica);
     pb.autoCancellation(false);
     await pb.admins.authWithPassword(POCKETBASE_USERNAME_AUTH, POCKETBASE_PASSWORD_AUTH);
 
@@ -173,7 +178,7 @@ const initializePocketBase = async () => {
         const newPb = new PocketBase(replica);
         newPb.autoCancellation(false);
         await newPb.admins.authWithPassword(POCKETBASE_USERNAME_AUTH, POCKETBASE_PASSWORD_AUTH);
-        replicaPbs.add(newPb);
+        replicaPbs.push(newPb);
     }
 
     const messages = await getMessages();

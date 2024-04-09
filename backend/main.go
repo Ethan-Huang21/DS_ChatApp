@@ -47,8 +47,9 @@ var isConnected = false
 var connectedServers = make(map[*websocket.Conn]bool)
 
 // Needs to know the IP's of all the other Replicas (and itself)
-var serverList = []string {
-	"host.docker.internal"
+var serverList = []string{
+	"10.13.189.200",
+	"10.13.90.99",
 }
 
 // handle Connections
@@ -140,9 +141,10 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 		PKM.Lock()
 		if !isConnected && !PK {
 			// Iterate through the serverList, attempting to connect
-			for ip := range serverList {
+			for _, ip := range serverList {
 				log.Println("Attempting to Connect to p:8081 at:", ip)
 				var err error
+
 				psAddr := "ws://" + ip + ":8081/ws"
 				origin := "http://" + ip + "/"
 
@@ -159,7 +161,7 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 			}
 			PKM.Unlock()
 			// If we didn't get a connection, loop again
-			if (!isConnected) {
+			if !isConnected {
 				time.Sleep(2 * time.Second) // Retry after 2 seconds
 				continue
 			}

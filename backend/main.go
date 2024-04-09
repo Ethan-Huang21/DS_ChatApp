@@ -161,7 +161,7 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 			}
 			PKM.Unlock()
 			// If we didn't get a connection, loop again
-			if !isConnected {
+			if !isConnected && !PK {
 				time.Sleep(2 * time.Second) // Retry after 2 seconds
 				continue
 			}

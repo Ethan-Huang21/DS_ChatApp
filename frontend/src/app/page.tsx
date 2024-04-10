@@ -28,6 +28,18 @@ export default function Home() {
 
   let ws = useRef<WebSocket | null>(null);
 
+  const storeUsername = (user: User) => {
+    setUser(user);
+    localStorage.setItem('userID', user.id);
+    localStorage.setItem('username', user.username);
+  };
+
+  const resetUsername = () => {
+    setUser(undefined);
+    localStorage.removeItem('userID');
+    window.location.reload();
+  };
+
   const sendMessage = () => {
     let message = {
       user: user?.id,
@@ -59,8 +71,21 @@ export default function Home() {
   }, [messages])
 
   const openWebSocket = (serverAddress: string, loadBalancerIndex: number) => {
+    const storedUserID = localStorage.getItem('userID');
+    const storedUsername = localStorage.getItem('username');
+    if (storedUserID && storedUsername) {
+      setUser({ id: storedUserID, username: storedUsername });
+      console.log('User found in local storage:', storedUsername);
+    }
+    else {
+      console.log('No user found in local storage');
+    }
+
     // Create a WebSocket connection when the component mounts
-    ws.current = new WebSocket(serverAddress);
+    const wsAddressWithUserID = `${serverAddress}?userID=${storedUserID}`;
+    console.log('Connecting to:', wsAddressWithUserID);
+
+    ws.current = new WebSocket(wsAddressWithUserID);
 
     // Handle messages from the server
     ws.current.addEventListener('message', (event) => {
@@ -78,6 +103,8 @@ export default function Home() {
             username: data.username
           };
           setUser(user);
+          storeUsername(user);
+          console.log('User:', user);
         }
 
         // If message list
@@ -138,14 +165,10 @@ export default function Home() {
               style={{ width: '150px', padding: '10px 20px', pointerEvents: open ? 'auto' : 'none' }}
               ref={ddmenuRef}>
               <div className='text-lg mb-1'>{user?.username}</div>
-              <hr className="my-1" style={{ color: "gray", background: "gray", height: "2px", width: "75px" }} />
               <div className="ml-1 my-1">
-                {/* Dropdown Items --> Can change depending on authentication */}
-                <div className="hover:text-gray-700"> Select1 </div>
-                <div className="hover:text-gray-700"> Select2 </div>
-                <div className="hover:text-gray-700"> Select3 </div>
-                <div className="hover:text-gray-700"> Select4 </div>
-                <div className="hover:text-gray-700"> Select5 </div>
+                <button className="text-red-500 hover:text-red-700" onClick={resetUsername}>
+                  Reset Username
+                </button>
               </div>
             </div>
           }

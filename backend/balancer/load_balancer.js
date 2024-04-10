@@ -18,15 +18,25 @@ const serverList = [
 const getMessages = async (pb) => {
     const results = await pb.collection('messages').getFullList();
     for (let result of results) {
-        const username = (await pb.collection('users').getOne(result.user)).username;
-        result.username = username;
+        try {
+            const username = (await pb.collection('users').getOne(result.user)).username;
+            result.username = username;
+        }catch(e){
+            console.log("User not found, using user id instead.");
+            result.username = result.id;
+        }
     }
     return results.map(r => { return { id: r.id, content: r.content, username: r.username, time: r.created } });
 };
 
 const createUser = async (pb) => {
-    const username = generate();
+    const username = generate({ minLength: 10 });
     const user = await pb.collection('users').create({ username });
+    return user;
+}
+
+const getUser = async (pb, username) => {
+    const user = await pb.collection('users').getOne(username);
     return user;
 }
 
@@ -56,10 +66,35 @@ const checkMainHealth = async () => {
 
 }
 
-wss.on('connection', async (ws) => {
+wss.on('connection', async (ws, req) => {
     console.log('Client connected');
+
+    // Check the server's health
     await checkMainHealth();
-    const user = await createUser(pb);
+
+    // Use the WHATWG URL class to parse query parameters from the request URL
+    const queryParams = new URL(req.url, `ws://${req.headers.host}`).searchParams;
+
+    // Retrieve the userID from the query parameters
+    const userID = queryParams.get('userID');
+
+    let user;
+    if (userID !== 'undefined' && userID !== null) {
+        // A userID was passed, so retrieve the existing user
+        // Assuming getUser is a function you'd implement to retrieve a user by userID
+        try {
+            user = await getUser(pb, userID);
+        } catch (e) {
+            console.log("User not found, creating a new user.");
+            user = await createUser(pb);
+        }
+    } else {
+        // No userID was passed, so create a new user
+        // Assuming pb is some parameter you have previously defined that createUser needs
+        user = await createUser(pb);
+    }
+
+    // Send the user object back to the client
     ws.send(JSON.stringify(user));
 
     clients.add(ws);
@@ -142,7 +177,6 @@ const startServer = (port) => {
         });
     }
     catch {
-        console.log('OH SHIT')
         server.listen(port + 1, () => {
             console.log('WebSocket server listening on port ', port + 1);
         })

@@ -60,11 +60,13 @@ const createUser = async (pb) => {
     return user;
 }
 
+// check health of primary
 const checkMainHealth = async () => {
     try {
         await pb.health.check();
     }
     catch (e) {
+        // connect to another backup if primary fails health check
         console.log("Disconnected. Trying to connect to a new server");
         for (let server of serverList) {
             try {
@@ -90,6 +92,7 @@ const checkMainHealth = async () => {
 
 const sendMessagesToClient = async () => {
     try {
+        // retrieve messages and send to each client connected to the websocket
         const messages = await getMessages();
         const messagesString = JSON.stringify(messages);
         clients.forEach((client) => {
@@ -102,6 +105,9 @@ const sendMessagesToClient = async () => {
     }
 }
 
+
+const maxRetransmitionAttempts = 2;
+let retransmitionAttempts = 0;
 // construct message and send http post request to update the database
 const sendDatabaseUpdate = async (messageContent, user) => {
     try {
@@ -109,7 +115,9 @@ const sendDatabaseUpdate = async (messageContent, user) => {
             content: messageContent,
             user: user
         }
-        const response = await axios.post(primaryReplica + '/update', postData)
+        const response = await axios.post(primaryReplica + '/update', postData, {
+            timeout: 1000 // 1 second
+        });
 
         // only update client if ack is recieved
         if (response.data === 'ACK') {
@@ -123,11 +131,18 @@ const sendDatabaseUpdate = async (messageContent, user) => {
 
     }
     catch (error) {
-        // Handle errors
+        // Handle timeouts or bad responses
         console.error('Error:', error.message);
-        // Retry sending after a delay (maybe after a certain amount of retries)
-        await new Promise(resolve => setTimeout(resolve, 1)); // Wait for 1 seconds
-        await sendDatabaseUpdate(); // Retry sending the request
+        
+        //retransmit
+        if (retransmitionAttempts < maxRetransmitionAttempts) {
+            retransmitionAttempts++;
+            await sendDatabaseUpdate(messageContent, user);
+        }
+        else {
+            console.log('Max retransmition attempts reached. Dropping message...');
+            retransmitionAttempts = 0;
+        }
     }
 }
 

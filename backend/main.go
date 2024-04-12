@@ -20,9 +20,11 @@ import (
 	"log"
 	"os"
 
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
@@ -44,12 +46,95 @@ import (
 var PKM sync.Mutex
 var PK = false
 var isConnected = false
+var prsync = false
 var connectedServers = make(map[*websocket.Conn]bool)
+
+type Item struct {
+	ID string
+}
+
+type syncSt struct {
+	messages []Item
+	users    []Item
+	sizestr  string
+	mlen     int
+	ulen     int
+}
 
 // Needs to know the IP's of all the other Replicas (and itself)
 var serverList = []string{
 	"10.13.189.200",
 	"10.13.90.99",
+}
+
+// Explanation of the Synchronization for Rebroadcasts:
+// We broadcast the size of the collections of messages and users from Primary to Replicas
+// Three cases occur:
+//  1. All the Same --> There wasn't an issue, therefore, ACK and we're good to go
+//  2. Replica is Bigger --> Leader must be behind, so we expect a rebroadcast later -- delete our most recent and ACK
+//  3. Replica is Smaller --> We must let the leader know, as rebroadcast will duplicate itself.
+//     - This should be the same, since we're FIFO, only one record changes at a time.
+//     - Primary will receive the same sort of ACK's -- informing it to delete their most recent records
+//     - Since the primary is changing, all replicas with the same state must also delete.
+//     - Once they've deleted and ACK'd again, we continue and expect the rebroadcast.
+//
+// GenSync --> This function sends a Query to receive all ID's ordered by creation (snapshot).
+func genSync(app *pocketbase.PocketBase) syncSt {
+	var msg []Item
+	var usr []Item
+	// Create most recent Msg | User ID string
+	//query := app.Dao().DB().NewQuery("SELECT id FROM messages ORDER BY messages.created DESC LIMIT 1")
+	query := app.Dao().DB().NewQuery("SELECT id FROM messages ORDER BY messages.created")
+	query.All(&msg)
+	query = app.Dao().DB().NewQuery("SELECT id FROM users ORDER BY users.created")
+	query.All(&usr)
+	pmsg := strconv.Itoa(len(msg)) + "|" + strconv.Itoa(len(usr))
+	log.Println("Size Message: ", pmsg)
+
+	return syncSt{messages: msg, users: usr, sizestr: pmsg, mlen: len(msg), ulen: len(usr)}
+}
+
+func delMsgRecord(app *pocketbase.PocketBase, msg []Item) bool {
+	record, err := app.Dao().FindRecordById("messages", msg[0].ID)
+	if err != nil {
+		log.Println("Error: Message Finding:", err)
+		return false
+	}
+
+	if err := app.Dao().DeleteRecord(record); err != nil {
+		log.Println("Error: Message Deletion")
+		return false
+	}
+
+	return true
+}
+
+func delUsrRecord(app *pocketbase.PocketBase, usr []Item) bool {
+	record, err := app.Dao().FindRecordById("messages", usr[0].ID)
+	if err != nil {
+		log.Println("Error: User Finding:", err)
+		return false
+	}
+
+	if err := app.Dao().DeleteRecord(record); err != nil {
+		log.Println("Error: User Deletion")
+		return false
+	}
+
+	return true
+}
+
+// In cases where the primary's are larger than the replica's, we respond with what to decrement
+func syncResp(pm int, pu int, rm int, ru int) string {
+	if pm > rm && pu > ru {
+		return "ACK11"
+	} else if pm > rm && pu == ru {
+		return "ACK10"
+	} else if pm == rm && pu > ru {
+		return "ACK01"
+	} else {
+		return "X"
+	}
 }
 
 // handle Connections
@@ -69,15 +154,61 @@ func removeConn(ws *websocket.Conn) {
 }
 
 // Function to return an ACK
-func sendACK(ws *websocket.Conn) {
+func sendACK(ws *websocket.Conn, msg ...string) {
+	ackMsg := "ACK" // Default
+	// Use custom if provided
+	if len(msg) > 0 {
+		ackMsg = msg[0]
+	}
+
 	// Send ACK
-	if err := websocket.Message.Send(ws, "ACK"); err != nil {
+	if err := websocket.Message.Send(ws, ackMsg); err != nil {
 		log.Println("Error Sending ACK: ", err)
 	}
 }
 
+func validateACKs(list []string) (string, error) {
+	validValues := map[string]bool{
+		"ACK11": true,
+		"ACK10": true,
+		"ACK01": true,
+	}
+
+	if len(list) == 0 {
+		return "", errors.New("the list is empty")
+	}
+
+	firstValue := list[0]
+	if _, ok := validValues[firstValue]; !ok {
+		return "", fmt.Errorf("invalid ACK value: %s", firstValue)
+	}
+
+	for _, ack := range list {
+		if ack != firstValue {
+			return "", errors.New("not all items in the list are the same")
+		}
+	}
+	return firstValue, nil
+}
+
+func handleACK(ack string, app *pocketbase.PocketBase, psync syncSt) {
+	switch ack {
+	case "ACK11":
+		delMsgRecord(app, psync.messages)
+		delUsrRecord(app, psync.users)
+	case "ACK10":
+		delMsgRecord(app, psync.messages)
+	case "ACK01":
+		delUsrRecord(app, psync.users)
+	default:
+		return
+	}
+}
+
 // Sends a message to all connected servers, await ACK response
-func broadcastMsg(message string) {
+func broadcastMsg(message string, app *pocketbase.PocketBase, psync ...syncSt) {
+	var sameState = make(map[*websocket.Conn]bool)
+	var ackList []string
 	for pb := range connectedServers {
 		// Broadcast message
 		if err := websocket.Message.Send(pb, message); err != nil {
@@ -106,6 +237,18 @@ func broadcastMsg(message string) {
 				time.Sleep(550 * time.Millisecond)
 				return
 			}
+
+			// If we haven't sync'd yet
+			if !prsync {
+				// If it's a simple ACK, it's the same state as primary, so save it
+				if ACK == "ACK" {
+					sameState[pb] = true
+				} else {
+					// Otherwise, save other ACK's
+					ackList = append(ackList, ACK)
+				}
+			}
+
 			log.Println("ACK Received: ", ACK)
 		}(pb, fin)
 
@@ -118,6 +261,60 @@ func broadcastMsg(message string) {
 			removeConn(pb)
 		case <-fin:
 			// Nothing
+		}
+	}
+
+	if !prsync {
+		if len(ackList) == 0 {
+			return
+		}
+		// Check if all elements are the same and valid
+		ackType, err := validateACKs(ackList)
+		if err != nil {
+			fmt.Println("Error: ", err)
+		} else {
+			handleACK(ackType, app, psync[0])
+			for pb := range sameState {
+				// Broadcast message
+				if err := websocket.Message.Send(pb, ackType); err != nil {
+					log.Println("Error Sending Message: ", err)
+					removeConn(pb)
+					continue
+				}
+				// Create a timer and ensure it gets cleaned up after function exits
+				timeout := time.NewTimer(500 * time.Millisecond)
+				defer timeout.Stop()
+
+				// Create a signal channel to communicate with Routines
+				fin := make(chan struct{})
+
+				// Create a routine that waits for either a Timeout or ACK.
+				go func(pb *websocket.Conn, fin chan struct{}) {
+					// Once this routine exits, clean up the channel
+					// Meaning it signals that the ACK was received, or an error occurred.
+					defer close(fin)
+					// Wait for Response before continuing
+					var ACK string
+					if err := websocket.Message.Receive(pb, &ACK); err != nil {
+						// If an error was received, then sleep for 0.55s, ensuring timeout
+						log.Println("Error: Receiving ACK: ", err)
+						time.Sleep(550 * time.Millisecond)
+						return
+					}
+					log.Println("ACK Received: ", ACK)
+				}(pb, fin)
+
+				// Wait for multiple channel operations simultaneously
+				// Executes Default -- unless another case is prepared.
+				select {
+				// Timeout -- If it reaches 2s, no ACK is received.
+				case <-timeout.C:
+					log.Println("Error: ACK Timeout")
+					removeConn(pb)
+				case <-fin:
+					// Nothing
+				}
+			}
 		}
 	}
 }
@@ -152,7 +349,7 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 				// "http://localhost/"
 				ws, err = websocket.Dial(psAddr, "", origin)
 				if err != nil {
-					log.Println("Error connecting to", ip, ":8081:", err)
+					//log.Println("Error connecting to", ip, ":8081:", err)
 					continue
 				}
 				isConnected = true
@@ -164,6 +361,77 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 			if !isConnected && !PK {
 				time.Sleep(2 * time.Second) // Retry after 2 seconds
 				continue
+			} else if isConnected {
+				rsync := genSync(app)
+				var message string
+				err := websocket.Message.Receive(ws, &message)
+				if err != nil {
+					// Websocket Closure
+					if err.Error() == "EOF" {
+						log.Println("Connection Closed. Reconnecting...")
+						isConnected = false
+						prsync = false
+						ws.Close()
+					}
+					fmt.Println("Error receiving message: ", err)
+					continue
+				} else {
+					spt := `(^\d+)\|(\d+)$`
+					regex := regexp.MustCompile(spt)
+					matches := regex.FindStringSubmatch(message)
+					// Testing - Print Contents
+					if len(matches) > 0 {
+						var pmsize int
+						var pusize int
+						for i, match := range matches[1:] {
+							fmt.Printf("Group %d: %s\n", i+1, match)
+						}
+						pmsize, err = strconv.Atoi(matches[1])
+						if err != nil {
+							log.Println("Error: Not Integer P.Msg:", err)
+						}
+						pusize, err = strconv.Atoi(matches[2])
+						if err != nil {
+							log.Println("Error: Not Integer P.Usr:", err)
+						}
+
+						if pmsize < rsync.mlen && pusize < rsync.ulen {
+							delMsgRecord(app, rsync.messages)
+							delUsrRecord(app, rsync.users)
+							sendACK(ws)
+						} else if pmsize < rsync.mlen && pusize == rsync.ulen {
+							delMsgRecord(app, rsync.messages)
+						} else if pmsize == rsync.mlen && pusize < rsync.ulen {
+							delUsrRecord(app, rsync.users)
+						} else {
+							strACK := syncResp(pmsize, pusize, rsync.mlen, rsync.ulen)
+							if strACK == "X" {
+								// We're the same as Primary, so we wait for a response
+								sendACK(ws)
+								err := websocket.Message.Receive(ws, &message)
+								if err != nil {
+									// Websocket Closure
+									if err.Error() == "EOF" {
+										log.Println("Connection Closed. Reconnecting...")
+										isConnected = false
+										prsync = false
+										ws.Close()
+									}
+									fmt.Println("Error receiving message: ", err)
+									continue
+								} else {
+									handleACK(message, app, rsync)
+									sendACK(ws)
+								}
+							} else {
+								// We need Primary to Synchronize with Us.
+								sendACK(ws, strACK)
+							}
+						}
+					} else {
+						fmt.Println("Matches is Empty")
+					}
+				}
 			}
 		} else {
 			PKM.Unlock()
@@ -178,6 +446,7 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 					if err.Error() == "EOF" {
 						log.Println("Connection Closed. Reconnecting...")
 						isConnected = false
+						prsync = false
 						ws.Close()
 						break
 					}
@@ -363,7 +632,10 @@ func main() {
 					log.Println("Server already running on port 8081")
 				}
 			}()
-			time.Sleep(3 * time.Second)
+			time.Sleep(2 * time.Second)
+			psync := genSync(app)
+			broadcastMsg(psync.sizestr, app)
+			prsync = true
 		} else {
 			PKM.Unlock()
 		}
@@ -388,8 +660,8 @@ func main() {
 		log.Println(record.GetString("user"))
 
 		if PK {
-			log.Println("1:" + record.Id + ":" + record.GetString("content") + ":" + record.GetString("user") + "|" + record.Created.String() + "|" + record.Updated.String())
-			broadcastMsg("1:" + record.Id + ":" + record.GetString("content") + ":" + record.GetString("user") + "|" + record.Created.String() + "|" + record.Updated.String())
+			log.Println("1:"+record.Id+":"+record.GetString("content")+":"+record.GetString("user")+"|"+record.Created.String()+"|"+record.Updated.String(), app)
+			broadcastMsg("1:"+record.Id+":"+record.GetString("content")+":"+record.GetString("user")+"|"+record.Created.String()+"|"+record.Updated.String(), app)
 		}
 
 		return nil
@@ -403,8 +675,8 @@ func main() {
 		log.Println(record.Id)
 
 		if PK {
-			log.Println("2:" + record.Id + ":" + record.GetString("username") + "|" + record.Created.String() + "|" + record.Updated.String())
-			broadcastMsg("2:" + record.Id + ":" + record.GetString("username") + "|" + record.Created.String() + "|" + record.Updated.String())
+			log.Println("2:"+record.Id+":"+record.GetString("username")+"|"+record.Created.String()+"|"+record.Updated.String(), app)
+			broadcastMsg("2:"+record.Id+":"+record.GetString("username")+"|"+record.Created.String()+"|"+record.Updated.String(), app)
 		}
 
 		return nil

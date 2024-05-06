@@ -24,7 +24,7 @@ export default function Home() {
   const effectRan = useRef(false);
 
   // addresses of load balancers.
-  const loadBalancerAdresses = ['ws://localhost:3010', 'ws://localhost:3011']
+  const loadBalancerAdresses = ['ws://10.13.101.26:3010', 'ws://10.13.101.26:3011']
 
   let ws = useRef<WebSocket | null>(null);
 
@@ -162,19 +162,16 @@ export default function Home() {
           {/* Dropdown Menu */}
           {open &&
             <div className={`absolute top-10 left-5 mt-10 bg-white border rounded-md shadow-lg text-black transition-opacity duration-350`}
-              style={{ width: '150px', padding: '10px 20px', pointerEvents: open ? 'auto' : 'none' }}
+              style={{ width: 'auto', padding: '10px 20px', pointerEvents: open ? 'auto' : 'none' }}
               ref={ddmenuRef}>
               <div className='text-lg mb-1'>{user?.username}</div>
-              <div className="ml-1 my-1">
-                <button className="text-red-500 hover:text-red-700" onClick={resetUsername}>
-                  Reset Username
-                </button>
-              </div>
+              <hr className="my-1" style={{ color: "gray", background: "gray", height: "2px", width: "75px" }} />
+              <button className="text-red-500 hover:text-red-700" onClick={resetUsername}>
+                Reset Username
+              </button>
             </div>
           }
         </div>
-        <hr className="my-1" style={{ color: "gray", background: "gray", height: "2px", width: "40px" }} />
-        {/* Other Buttons for Servers */}
       </div>
 
       {/* Primary Flex Container for Input + Response */}

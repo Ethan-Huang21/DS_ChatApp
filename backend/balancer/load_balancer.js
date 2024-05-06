@@ -2,29 +2,54 @@ import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http'
 import PocketBase from 'pocketbase'
 import { generate } from "random-words";
+import axios from 'axios';
+
 
 
 const server = http.createServer();
 const wss = new WebSocketServer({ server });
 
+const POCKETBASE_USERNAME_AUTH = "junyi.li@ucalgary.ca";
+const POCKETBASE_PASSWORD_AUTH = "123123123123";
+
 let pb;
 let clients = new Set();
+let replicaPbs = [];
 const serverList = [
-    "http://127.0.0.1:5001",
-    "http://127.0.0.1:5002",
-    "http://127.0.0.1:5003",
+    "http://10.13.90.99:8090",
+    "http://10.13.163.18:8090"
 ];
 
-const getMessages = async (pb) => {
-    const results = await pb.collection('messages').getFullList();
-    for (let result of results) {
+let primaryReplica = "http://10.13.189.200:8090";
+
+// gets random replica from set of replicas to read from
+const getRandReplicaFromSet = async () => {
+    let randomIndex = Math.floor(Math.random() * replicaPbs.length);
+    console.log(randomIndex);
+
+    while (true) {
+        if (replicaPbs.length == 0)
+            return pb;
         try {
-            const username = (await pb.collection('users').getOne(result.user)).username;
-            result.username = username;
-        }catch(e){
-            console.log("User not found, using user id instead.");
-            result.username = result.id;
+            await replicaPbs[randomIndex].health.check();
+            return replicaPbs[randomIndex];
         }
+        catch (e) {
+            console.log(e);
+            replicaPbs.splice(randomIndex, 1);
+            randomIndex = Math.floor(Math.random() * replicaPbs.length);
+        }
+    }
+}
+
+const getMessages = async () => {
+    // reads from replica not primary
+    const readPb = await getRandReplicaFromSet();
+
+    const results = await readPb.collection('messages').getFullList();
+    for (let result of results) {
+        const username = (await readPb.collection('users').getOne(result.user)).username;
+        result.username = username;
     }
     return results.map(r => { return { id: r.id, content: r.content, username: r.username, time: r.created } });
 };
@@ -50,11 +75,13 @@ const checkMainHealth = async () => {
             try {
                 const res = await fetch(server + "/api/health");
                 const data = await res.json();
+                primaryReplica = server;
+                replicaPbs.splice(replicaPbs.indexOf(server), 1)
                 console.log("Found a new server! " + server);
                 if (data.code == 200) {
                     pb = new PocketBase(server);
                     pb.autoCancellation(false);
-                    await pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123");
+                    await pb.admins.authWithPassword(POCKETBASE_USERNAME_AUTH, POCKETBASE_PASSWORD_AUTH);
                     break;
                 }
             }
@@ -64,6 +91,54 @@ const checkMainHealth = async () => {
         }
     }
 
+}
+
+const sendMessagesToClient = async () => {
+    try {
+        const messages = await getMessages();
+        const messagesString = JSON.stringify(messages);
+        clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(messagesString);
+            }
+        });
+    } catch (error) {
+        console.error('Error sending messages to client:', error);
+    }
+}
+
+// construct message and send http post request to update the database
+const sendDatabaseUpdate = async (messageContent, user) => {
+    try {
+        const postData = {
+            content: messageContent,
+            user: user
+        }
+        const response = await axios.post(primaryReplica + '/update', postData)
+
+        // only update client if ack is recieved
+        if (response.data === 'ACK') {
+            console.log("Ack recieved message sent successfully");
+            await sendMessagesToClient();
+            return
+        }
+        else {
+            throw new Error('Invalid response recieved');
+        }
+
+    }
+    catch (error) {
+        // Handle errors
+        console.error('Error:', error.message);
+        // Retry sending after a delay (maybe after a certain amount of retries)
+        await new Promise(resolve => setTimeout(resolve, 1)); // Wait for 1 seconds
+        await sendDatabaseUpdate(); // Retry sending the request
+    }
+}
+
+const getUser = async (pb, username) => {
+    const user = await pb.collection('users').getOne(username);
+    return user;
 }
 
 wss.on('connection', async (ws, req) => {
@@ -109,25 +184,14 @@ wss.on('connection', async (ws, req) => {
         console.log(`The content ${messageContent}`)
 
         await checkMainHealth();
-        const result = await pb.collection('messages').create({ content: messageContent, user: user });
+        //const result = await pb.collection('messages').create({ content: messageContent, user: user });
+
+        await sendDatabaseUpdate(messageContent, user);
+        //console.log(result);
         //broadcast to clients
-        await sendMessagesToClient();
+        //await sendMessagesToClient();
     });
 
-
-    const sendMessagesToClient = async () => {
-        try {
-            const messages = await getMessages(pb);
-            const messagesString = JSON.stringify(messages);
-            clients.forEach((client) => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(messagesString);
-                }
-            });
-        } catch (error) {
-            console.error('Error sending messages to client:', error);
-        }
-    };
     await sendMessagesToClient();
 
     // Handle disconnection
@@ -139,10 +203,20 @@ wss.on('connection', async (ws, req) => {
 
 
 const initializePocketBase = async () => {
-    pb = new PocketBase("http://127.0.0.1:8090");
+    pb = new PocketBase(primaryReplica);
     pb.autoCancellation(false);
-    await pb.admins.authWithPassword("junyi.li@ucalgary.ca", "123123123123");
-    const messages = await getMessages(pb);
+    await pb.admins.authWithPassword(POCKETBASE_USERNAME_AUTH, POCKETBASE_PASSWORD_AUTH);
+
+    // initialize pocketbase replicas for reading
+
+    for (let replica of serverList) {
+        const newPb = new PocketBase(replica);
+        newPb.autoCancellation(false);
+        await newPb.admins.authWithPassword(POCKETBASE_USERNAME_AUTH, POCKETBASE_PASSWORD_AUTH);
+        replicaPbs.push(newPb);
+    }
+
+    const messages = await getMessages();
     console.log("Messages: ", messages);
 }
 

@@ -60,6 +60,11 @@ const createUser = async (pb) => {
     return user;
 }
 
+const getUser = async (pb, username) => {
+    const user = await pb.collection('users').getOne(username);
+    return user;
+}
+
 const checkMainHealth = async () => {
     try {
         await pb.health.check();
@@ -246,7 +251,6 @@ const startServer = (port) => {
         });
     }
     catch {
-        console.log('OH SHIT')
         server.listen(port + 1, () => {
             console.log('WebSocket server listening on port ', port + 1);
         })

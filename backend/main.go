@@ -48,8 +48,8 @@ var connectedServers = make(map[*websocket.Conn]bool)
 
 // Needs to know the IP's of all the other Replicas (and itself)
 var serverList = []string{
-	"10.13.189.200",
-	"10.13.90.99",
+	"ws://localhost:8090",
+	"ws://localhost:8091",
 }
 
 // handle Connections

@@ -17,9 +17,11 @@ Alongside this, it's built for the purpose of displaying the fault tolerance of 
       * To run Pocketbase extended with Go back-end servers
       * alt: go run main.go serve --http="127.0.0.1:3000" -> Runs on Port 3000 instead of default 8090
   - npm run dev
+      * npm install -> run prior for dependencies
       * To run the React Front-end GUI
-  - node load_balancer.js -port [PORT#]
-      * To run the load balancer -> requires front-end and back-end to be active
+  - node load_balancer.js --port [PORT#]
+      * npm install -> run prior for dependencies
+      * To run the load balancer -> requires front-end and back-end to be active, meaning Front-end is open, and all backend servers in load_balancer.js are open for connection.
       * E.g. node load_balancer.js -port 3010
 
 ## Credits

@@ -24,7 +24,7 @@ export default function Home() {
   const effectRan = useRef(false);
 
   // addresses of load balancers.
-  const loadBalancerAdresses = ['ws://10.13.101.26:3010', 'ws://10.13.101.26:3011']
+  const loadBalancerAdresses = ['ws://localhost:3010', 'ws://localhost:3011']
 
   let ws = useRef<WebSocket | null>(null);
 

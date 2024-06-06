@@ -3,6 +3,7 @@ import http from "http";
 import PocketBase from "pocketbase";
 import { generate } from "random-words";
 import axios from "axios";
+import { readFileSync } from "fs";
 
 const server = http.createServer();
 const wss = new WebSocketServer({ server });
@@ -13,9 +14,17 @@ const POCKETBASE_PASSWORD_AUTH = "123123123123";
 let pb;
 let clients = new Set();
 let replicaPbs = [];
-const serverList = ["http://localhost:8090", "http://localhost:8091"];
 
-let primaryReplica = "http://localhost:8090";
+// Use the 2 below for Manual (go run main.go serve) ver.
+// const serverList = ["http://localhost:8090", "http://localhost:8091"];
+// let primaryReplica = "http://localhost:8090";
+
+// Use the 4 below for Docker (Python Script) ver.
+// Read the Pocketbase URLs string from the file
+const pocketbaseUrlsString = readFileSync("pocketbase_urls.txt", "utf8");
+const serverList = pocketbaseUrlsString.split(",");
+console.log(serverList); // Outputs an array of Pocketbase URLs
+let primaryReplica = serverList[0];
 
 // gets random replica from set of replicas to read from
 const getRandReplicaFromSet = async () => {

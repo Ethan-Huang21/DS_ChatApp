@@ -10,12 +10,14 @@ Alongside this, it's built for the purpose of displaying the fault tolerance of 
   - Javascript / NodeJS (Proxy / Middleware)
   - Pocketbase extended with Go (Backend)
       * Docker | Python -> There exists a Python script (replication.py) that creates Docker containerizations of PB+Go Servers.
-      * However, this is primarily for testing purposes as it doesn't fully function with the load balancer, as it's setup in the manner that containers operate within their own networks, which isn't accessible without the proper flags.
+      * In usage, however, due to the Dockerfile relying on local migratory files -- it can break synchronization on monitoring.
 
 ## Execution
-  - go run main.go serve
+  - go run main.go serve  | python replication.py (suggested)
       * To run Pocketbase extended with Go back-end servers
       * alt: go run main.go serve --http="127.0.0.1:3000" -> Runs on Port 3000 instead of default 8090
+      * Python script links container 8080 port to localhost ports, so access Pocketbase servers via localhost ports 5001, 5002, 5003 (default). Creates a Docker network for inter-container websocket hosting.
+      * IF using manual servers (go run main.go serve) -- 
   - npm run dev
       * npm install -> run prior for dependencies
       * To run the React Front-end GUI

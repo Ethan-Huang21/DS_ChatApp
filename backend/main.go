@@ -19,6 +19,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 
 	"fmt"
 	"net/http"
@@ -47,8 +48,34 @@ var isConnected = false
 var connectedServers = make(map[*websocket.Conn]bool)
 
 // Needs to know the IP's of all the other Replicas (and itself)
+/*
+// Use for Manual ver. (go run main.go serve)
+// --> Modify localhost with IP's of Replicas if you're actually hosting it across PC's
 var serverList = []string{
 	"localhost",
+}
+*/
+
+
+// Use alongside init() for Docker ver. (Python Script)
+var serverList = []string{}
+
+func init() {
+    // Read the SERVER_LIST environment variable
+    servers := os.Getenv("SERVER_LIST")
+    if servers != "" {
+        // Remove square brackets and single quotes
+        servers = strings.Trim(servers, "[]")
+        servers = strings.ReplaceAll(servers, "'", "")
+        // Split the string to extract server names
+        serversSlice := strings.Split(servers, ",")
+        // Trim leading and trailing whitespace from each server name
+        for _, server := range serversSlice {
+            serverList = append(serverList, strings.TrimSpace(server))
+        }
+    } else {
+        log.Fatal("SERVER_LIST environment variable not set")
+    }
 }
 
 // handle Connections

@@ -377,7 +377,7 @@ func main() {
 
 		// If websocket isn't open and we're considered a replica, but we got a write request
 		// Then we must be the primary -- thus, Host a server.
-		// Wait 4 (check-down-time), proceed.
+		// Wait 5 (check-down-time), proceed.
 		PKM.Lock()
 		if !isConnected && !PK {
 			PK = true
@@ -389,7 +389,7 @@ func main() {
 					log.Println("Server already running on port 8081")
 				}
 			}()
-			time.Sleep(4 * time.Second)
+			time.Sleep(5 * time.Second)
 		} else {
 			PKM.Unlock()
 		}

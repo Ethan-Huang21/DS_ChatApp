@@ -188,7 +188,7 @@ func handleMessage(ws *websocket.Conn, app *pocketbase.PocketBase, wg *sync.Wait
 			PKM.Unlock()
 			// If we didn't get a connection, loop again
 			if !isConnected && !PK {
-				time.Sleep(2 * time.Second) // Retry after 2 seconds
+				time.Sleep(1 * time.Second) // Retry after 1 seconds
 				continue
 			}
 		} else {
@@ -377,7 +377,7 @@ func main() {
 
 		// If websocket isn't open and we're considered a replica, but we got a write request
 		// Then we must be the primary -- thus, Host a server.
-		// Wait 3s (check-down-time), proceed.
+		// Wait 4 (check-down-time), proceed.
 		PKM.Lock()
 		if !isConnected && !PK {
 			PK = true
@@ -389,7 +389,7 @@ func main() {
 					log.Println("Server already running on port 8081")
 				}
 			}()
-			time.Sleep(3 * time.Second)
+			time.Sleep(4 * time.Second)
 		} else {
 			PKM.Unlock()
 		}
